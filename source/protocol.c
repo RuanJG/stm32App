@@ -125,6 +125,8 @@ return 1 decoder packget ok , len is coder->len; data is coder->data
 */
 int protocol_parse(protocol_t * coder, unsigned char c )
 {
+	if( coder->inited != 1 ) return 0;
+	
 	if( coder->index >= MAX_PACKET_SIZE )
 	{
 		coder->error_count ++;
@@ -189,5 +191,6 @@ void protocol_init(protocol_t * coder)
 	coder->ok_count = 0;
 	coder->index = 0;
 	coder->len = 0;
+	coder->inited = 1;
 }
 

@@ -10,7 +10,7 @@ u8 Can1_Configuration_mask(u8 FilterNumber, u16 ID, uint32_t id_type,  u16 ID_Ma
 	CAN_InitTypeDef        CAN_InitStructure;
 	CAN_FilterInitTypeDef  CAN_FilterInitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
-	u8 Init_state,id_offset;
+	u8 Init_state;
 	
 
 	// clock config 
@@ -163,10 +163,8 @@ void CAN_Interrupt (void)
 {
 	CanRxMsg RxMessage;
 	
-	
-	
 	CAN_Receive	(CAN1, 0, &RxMessage);
-	
+	can1_receive_event(&RxMessage);
 }
 
 
@@ -176,4 +174,5 @@ void USB_LP_CAN1_RX0_IRQHandler (void)
 {
 	CAN_Interrupt ();
 	CAN_ClearITPendingBit (CAN1, CAN_IT_FMP0); 
-} 
+
+}

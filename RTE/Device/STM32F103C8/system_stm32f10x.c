@@ -987,6 +987,7 @@ static void SetSysClockTo56(void)
 static void SetSysClockTo72(void)
 {
   __IO uint32_t StartUpCounter = 0, HSEStatus = 0;
+  uint32_t hse_div_p;
   
   /* SYSCLK, HCLK, PCLK2 and PCLK1 configuration ---------------------------*/    
   /* Enable HSE */    
@@ -1027,6 +1028,11 @@ static void SetSysClockTo72(void)
     /* PCLK1 = HCLK */
     RCC->CFGR |= (uint32_t)RCC_CFGR_PPRE1_DIV2;
 
+	//cali the clk mul mask
+	hse_div_p = (SYSCLK_FREQ_72MHz / HSE_VALUE); // 6M , hse_div_p = 12
+	hse_div_p = (hse_div_p-2)*0x40000;
+	  
+	  
 #ifdef STM32F10X_CL
     /* Configure PLLs ------------------------------------------------------*/
     /* PLL2 configuration: PLL2CLK = (HSE / 5) * 8 = 40 MHz */
@@ -1048,12 +1054,12 @@ static void SetSysClockTo72(void)
     /* PLL configuration: PLLCLK = PREDIV1 * 9 = 72 MHz */ 
     RCC->CFGR &= (uint32_t)~(RCC_CFGR_PLLXTPRE | RCC_CFGR_PLLSRC | RCC_CFGR_PLLMULL);
     RCC->CFGR |= (uint32_t)(RCC_CFGR_PLLXTPRE_PREDIV1 | RCC_CFGR_PLLSRC_PREDIV1 | 
-                            RCC_CFGR_PLLMULL9); 
+                            hse_div_p);//RCC_CFGR_PLLMULL9); 
 #else    
     /*  PLL configuration: PLLCLK = HSE * 9 = 72 MHz */
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLXTPRE |
                                         RCC_CFGR_PLLMULL));
-    RCC->CFGR |= (uint32_t)(RCC_CFGR_PLLSRC_HSE | RCC_CFGR_PLLMULL12);
+    RCC->CFGR |= (uint32_t)(RCC_CFGR_PLLSRC_HSE | hse_div_p);//RCC_CFGR_PLLMULL12);
 #endif /* STM32F10X_CL */
 
     /* Enable PLL */
