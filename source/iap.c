@@ -203,12 +203,12 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 {
 	protocol_encode(&encoder,data,size);
 	
-#if IAP_PORT_TYPE == IAP_PORT_UART
-	Uart_send(encoder.data,encoder.len);
-#endif 
-#if IAP_PORT_TYPE == IAP_PORT_CAN1
-	Can1_Send(encoder.data, encoder.len);
-#endif 
+#if IAP_PORT_UART
+		Uart_send(encoder.data,encoder.len);
+#endif
+#if  IAP_PORT_CAN1
+		Can1_Send(encoder.data, encoder.len);
+#endif
 	
 }
 
@@ -435,9 +435,8 @@ __STATIC_INLINE void iap_parase(unsigned char c)
 
 void uart_receive_event(unsigned char c)
 {
-#if IAP_PORT_TYPE==IAP_PORT_UART
-	iap_parase(c);
-#endif
+	if( 1==IAP_PORT_UART)
+		iap_parase(c);
 }
 
 
@@ -447,14 +446,16 @@ void uart_receive_event(unsigned char c)
 
 void can1_receive_event(CanRxMsg *msg)
 {
-#if IAP_PORT_TYPE==IAP_PORT_CAN1
+
 	int i;
 	
-	for( i=0 ; i< msg->DLC; i++)
-	{
-		iap_parase(msg->Data[i]);
+	if( 1 == IAP_PORT_CAN1){
+		for( i=0 ; i< msg->DLC; i++)
+		{
+			iap_parase(msg->Data[i]);
+		}
 	}
-#endif
+
 }
 
 

@@ -10,11 +10,9 @@
 
 //*****************************************************  choose board
 #define BOARD_MAIN_CONTROLLER_TYPE 0
-#define BOARD_NAVIGATION_TYPE 0
-#define BOARD_MONITOR_TYPE 1
+#define BOARD_NAVIGATION_TYPE 1
+#define BOARD_MONITOR_TYPE 0
 
-#define IAP_PORT_UART 0
-#define IAP_PORT_CAN1 1
 
 
 
@@ -36,7 +34,8 @@
 #define UART_BAUDRATE	9600
 #define CAN1_ID			0x11
 #define DEF_MAIN_CONTROLLER_CAN1_ID 0X0
-#define IAP_PORT_TYPE	IAP_PORT_UART
+#define IAP_PORT_UART 1
+#define IAP_PORT_CAN1 0
 #endif
 
 
@@ -52,7 +51,8 @@
 #define UART_BAUDRATE	9600
 #define CAN1_ID			0x16
 #define DEF_MAIN_CONTROLLER_CAN1_ID 0x10
-#define IAP_PORT_TYPE	IAP_PORT_UART
+#define IAP_PORT_UART 1
+#define IAP_PORT_CAN1 0
 #endif
 
 

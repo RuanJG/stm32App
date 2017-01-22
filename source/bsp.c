@@ -13,7 +13,7 @@ void gpio_init()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 	
 	
-#if IAP_PORT_TYPE == IAP_PORT_UART	
+#if IAP_PORT_UART	
 	//USART1								  
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = UART_TX_PIN;
@@ -30,7 +30,7 @@ void gpio_init()
 #endif
 
 
-#if IAP_PORT_TYPE == IAP_PORT_CAN1
+#if  IAP_PORT_CAN1
 	//CAN
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
@@ -82,12 +82,12 @@ void bsp_init()
 	
 	systick_init();
 	
-#if IAP_PORT_TYPE == IAP_PORT_UART
-	uart_init();
-#endif 
-#if IAP_PORT_TYPE == IAP_PORT_CAN1
-	can1_init();
-#endif 
+	if( 1 == IAP_PORT_UART)
+		uart_init();
+
+	if ( 1== IAP_PORT_CAN1 )
+		can1_init();
+
 }
 
 void bsp_event()
