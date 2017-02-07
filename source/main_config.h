@@ -10,8 +10,8 @@
 
 //*****************************************************  choose board
 #define BOARD_MAIN_CONTROLLER_TYPE 0
-#define BOARD_NAVIGATION_TYPE 1
-#define BOARD_MONITOR_TYPE 0
+#define BOARD_NAVIGATION_TYPE 0
+#define BOARD_MONITOR_TYPE 1
 
 
 
