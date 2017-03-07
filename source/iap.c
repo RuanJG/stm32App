@@ -44,6 +44,8 @@ volatile unsigned int iap_lost_ms;
 // if flash has programed , iap_has_flashed_data will set 1
 volatile int iap_has_flashed_data = 0;
 
+// inited flag
+volatile char iap_inited_flag = 0;
 
 void _memcpy(void *dst, const void *src, unsigned int n)
 {
@@ -424,7 +426,7 @@ void handle_packget(unsigned char *pkg, unsigned int len)
 __STATIC_INLINE void iap_parase(unsigned char c)
 {
 	//iap_lost_ms = 0;
-	if( 1 == protocol_parse( &decoder,c) )
+	if( iap_inited_flag ==1 && 1 == protocol_parse( &decoder,c) )
 	{
 		iap_lost_ms = 0;
 		handle_packget(decoder.data,decoder.len);
@@ -433,14 +435,15 @@ __STATIC_INLINE void iap_parase(unsigned char c)
 }
 
 
+
+
+//****************************************   irq call back   *************/
+
 void uart_receive_event(unsigned char c)
 {
 	if( 1==IAP_PORT_UART)
 		iap_parase(c);
 }
-
-
-
 
 
 
@@ -458,31 +461,10 @@ void can1_receive_event(CanRxMsg *msg)
 
 }
 
+//**************************************************************************/
 
 
 
-
-
-/*
-********  wait ms time for listen a start packget
-********
-******** !!!!!!!!  can not use in iap_init()
-*/
-int  iap_try_get_start_packget(unsigned int ms)
-{
-	volatile unsigned int now_ms;
-	
-	now_ms = ms;
-	while( now_ms-- > 0 )
-	{
-		if( program_step == PROGRAM_STEP_GET_DATA )
-			return 1;
-		
-		systick_delay_us(1000);
-	}
-
-	return 0;
-}
 
 
 
@@ -491,6 +473,8 @@ void iap_init()
 {
 	protocol_init(&encoder);
 	protocol_init(&decoder);	
+	
+	iap_inited_flag = 1;
 	
 	if( is_iap_tag_set() )
 	{

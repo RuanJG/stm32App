@@ -40,6 +40,7 @@ void Uart_Configuration (void)
 	NVIC_Init(&NVIC_InitStructure);	
 	
 	USART_ITConfig(UARTDEV, USART_IT_RXNE, ENABLE);	 
+	USART_ITConfig(UARTDEV, USART_IT_TXE, DISABLE);	
 	USART_Cmd(UARTDEV, ENABLE);	
 /*
 	while (USART_GetFlagStatus(UARTDEV, USART_FLAG_TC) == RESET)
@@ -49,12 +50,11 @@ void Uart_Configuration (void)
 
 }
 
-void UART_Receive_Byte( unsigned char c)
+__STATIC_INLINE void UART_Receive_Byte( unsigned char c)
 {
 
 	uart_receive_event(c);
 
-	
 }
 
 void Uart_send(unsigned char *data, int len)

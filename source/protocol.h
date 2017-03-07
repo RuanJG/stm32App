@@ -62,6 +62,12 @@ return 0 : no packget reciver
 return 1 decoder packget ok , len is coder->len; data is coder->data
 */
 int protocol_parse(protocol_t * coder, unsigned char c );
+
+/*
+* decode a packget in data[]
+* success , return packget len
+* false ,   return -1
+*/
 int protocol_decode(uint8_t *data, uint32_t size);
 
 
