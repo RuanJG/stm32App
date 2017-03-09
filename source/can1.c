@@ -1,8 +1,8 @@
 #include "stm32f10x_conf.h"
 #include "main_config.h"
+#include "fifo.h"
 
-
-
+FIFO_DEF(can1fifo, 128);
 
 
 u8 Can1_Configuration_mask(u8 FilterNumber, u16 ID, uint32_t id_type,  u16 ID_Mask , uint8_t sjw ,uint8_t bs1, uint8_t bs2, uint8_t prescale )
@@ -152,6 +152,34 @@ void Can1_Send(uint8_t id, uint8_t *data, int len)
 }
 
 
+int Can1_get( unsigned char *data, int size)
+{
+	int i, count = 0;
+	count = fifo_valid_count( &can1fifo );
+	count = count<size ? count:size;
+	
+	CAN_ITConfig (CAN1, CAN_IT_FMP0, DISABLE);	
+	for( i=0 ; i< count ;i ++)
+	{
+		fifo_get( &can1fifo, &data[i]);
+	}
+	CAN_ITConfig (CAN1, CAN_IT_FMP0, ENABLE);	
+	
+	return count;
+}
+
+int Can1_getChar(unsigned char * data)
+{
+	int count = 0;
+
+	CAN_ITConfig (CAN1, CAN_IT_FMP0, DISABLE);	
+	count = fifo_get( &can1fifo, data);
+	CAN_ITConfig (CAN1, CAN_IT_FMP0, ENABLE);
+	return count;
+}
+
+
+
 /**
  * @brief  CAN receive message from Navigation board, decode and store information
  *
@@ -162,11 +190,15 @@ void Can1_Send(uint8_t id, uint8_t *data, int len)
 void CAN_Interrupt (void)
 {
 	CanRxMsg RxMessage;
+	int i;
 	
 	CAN_Receive	(CAN1, 0, &RxMessage);
-	can1_receive_event(&RxMessage);
+	//can1_receive_event(&RxMessage);
+	for( i=0 ; i< RxMessage.DLC; i++)
+	{
+		fifo_force_put( &can1fifo, RxMessage.Data[i]);
+	}
 }
-
 
 
 

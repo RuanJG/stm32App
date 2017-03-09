@@ -1,11 +1,16 @@
 #include "stm32f10x_conf.h"
 #include "main_config.h"
 #include "bsp.h"
+#include "fifo.h"
+
+
+FIFO_DEF(rxfifo, 128);
 
 void Uart_Configuration (void)
 {		  
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
+
 	
 	USART_ITConfig(UARTDEV, USART_IT_RXNE, DISABLE);
 	USART_Cmd(UARTDEV, DISABLE);
@@ -53,9 +58,37 @@ void Uart_Configuration (void)
 __STATIC_INLINE void UART_Receive_Byte( unsigned char c)
 {
 
-	uart_receive_event(c);
+	fifo_force_put( &rxfifo , c);
+	//uart_receive_event(c);
 
 }
+
+int Uart_get(unsigned char * data, int size)
+{
+	int i, count = 0;
+	count = fifo_valid_count( &rxfifo );
+	count = count<size ? count:size;
+	USART_ITConfig(UARTDEV, USART_IT_RXNE, DISABLE);	
+	for( i=0 ; i< count ;i ++)
+	{
+		fifo_get( &rxfifo, &data[i]);
+	}
+	USART_ITConfig(UARTDEV, USART_IT_RXNE, ENABLE);	
+	
+	return count;
+}
+
+int Uart_getChar(unsigned char * data)
+{
+	int count = 0;
+
+	USART_ITConfig(UARTDEV, USART_IT_RXNE, DISABLE);	
+	count = fifo_get( &rxfifo, data);
+	USART_ITConfig(UARTDEV, USART_IT_RXNE, ENABLE);	
+	return count;
+}
+
+
 
 void Uart_send(unsigned char *data, int len)
 {

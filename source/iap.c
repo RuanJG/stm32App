@@ -27,7 +27,6 @@ unsigned char program_data_frame_seq = 0;
 volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
 
 
-
 // coders
 protocol_t decoder;
 protocol_t encoder;
@@ -46,6 +45,20 @@ volatile int iap_has_flashed_data = 0;
 
 // inited flag
 volatile char iap_inited_flag = 0;
+
+
+
+// timer , check timeout
+systick_time_t timeout_timer;
+
+
+
+// uart rx buffer
+#define UART_RX_BUFFER_SIZE 8
+#define CAN_RX_BUFFER_SIZE 8
+unsigned char uartRxBuffer[UART_RX_BUFFER_SIZE];
+unsigned char can1RxBuffer[CAN_RX_BUFFER_SIZE];
+
 
 void _memcpy(void *dst, const void *src, unsigned int n)
 {
@@ -436,8 +449,8 @@ __STATIC_INLINE void iap_parase(unsigned char c)
 
 
 
-
-//****************************************   irq call back   *************/
+/*
+****************************************   irq call back   *************
 
 void uart_receive_event(unsigned char c)
 {
@@ -461,9 +474,8 @@ void can1_receive_event(CanRxMsg *msg)
 
 }
 
-//**************************************************************************/
-
-
+**************************************************************************
+*/
 
 
 
@@ -472,7 +484,9 @@ void can1_receive_event(CanRxMsg *msg)
 void iap_init()
 {
 	protocol_init(&encoder);
-	protocol_init(&decoder);	
+	protocol_init(&decoder);
+	
+	systick_init_timer( &timeout_timer, 10);
 	
 	iap_inited_flag = 1;
 	
@@ -488,17 +502,35 @@ void iap_init()
 
 void iap_loop()
 {
+	int i, count;
 	//check iap_lost_ms, it will be fill 0 in can1 or uart receive event
+
+#if IAP_PORT_UART
 	
-	if( iap_lost_ms  >= _iap_lost_ms_max )
+	count = Uart_get(uartRxBuffer,UART_RX_BUFFER_SIZE);
+	for(i=0; i< count ; i++)
+		iap_parase(uartRxBuffer[i]);
+#endif
+	
+	
+#if IAP_PORT_CAN1 
+	
+	count = Can1_get(can1RxBuffer,CAN_RX_BUFFER_SIZE);
+	for(i=0; i< count ; i++)
+		iap_parase(can1RxBuffer[i]);
+	
+#endif
+	
+	
+	if( systick_check_timer( &timeout_timer ) == 1)
 	{
-		iap_jump_to_app();
-	}else{
-		iap_lost_ms++;
-	}
-	
-	systick_delay_us(1000);
-	
+		if( iap_lost_ms  >= _iap_lost_ms_max )
+		{
+			iap_jump_to_app();
+		}else{
+			iap_lost_ms += 10;
+		}
+	}	
 }
 
 
