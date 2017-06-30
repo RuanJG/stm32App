@@ -1,31 +1,38 @@
 #ifndef __FIFO_H
 #define __FIFO_H
 
-typedef struct {
-	int         	head;
-	int         	tail;
-	unsigned char	*buf;
-	unsigned int 	len;
-	unsigned int 	count;
-	unsigned char	error_overflow;
-} fifo_t;
+typedef struct _fifo_t {
+	volatile int		lock;
+	unsigned int		byteArray_len;
+	unsigned char *	byteArray_point;
+	size_t			size;
+	volatile unsigned int		head;
+	volatile unsigned int		tail;
+}fifo_t;
 
 
-int fifo_valid_count(fifo_t *fifo);
-int fifo_free_count(fifo_t *fifo);
-int fifo_overflow(fifo_t *fifo);
-int fifo_put(fifo_t *fifo, unsigned char c);
-int fifo_force_put(fifo_t *fifo, unsigned char c);
-int fifo_get(fifo_t *fifo, unsigned char *pc);
+
+#define FIFO_DEF(name,size,count)  \
+unsigned char _fifo_array_##name [ size*count+1 ]={0}; \
+fifo_t  _fifo_##name = { 0, size*count , _fifo_array_##name , size, 0 , 0}; \
+fifo_t*  name = &_fifo_##name;
 
 
-// two way to init
 
-void fifo_init(fifo_t *fifo, unsigned char *buf, int buf_len);
-
-#define FIFO_DEF(name,size) \
-	unsigned char fifoBuffer_##name[size]; \
-	fifo_t name={0, 0, fifoBuffer_##name, size, 0, 0};
+void fifo_unlock( fifo_t *fifo );
+void fifo_lock( fifo_t *fifo );
+int fifo_trylock( fifo_t * fifo );
+void fifo_clear( fifo_t *fifo );
+unsigned int fifo_valid( fifo_t *fifo);
+unsigned int fifo_free( fifo_t *fifo);
+int fifo_put( fifo_t * fifo, unsigned char data);
+int fifo_put_force( fifo_t * fifo, unsigned char data);
+int fifo_get( fifo_t *fifo , unsigned char * data);
+int fifo_valid_item( fifo_t *fifo);
+int fifo_put_item(fifo_t *fifo , void * item);
+int fifo_put_item_force(fifo_t *fifo , void * item);
+int fifo_get_item(fifo_t *fifo, void * item);
+void fifo_init(fifo_t *fifo, char *buf, int size, int count);
 
 
 

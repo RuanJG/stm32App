@@ -51,6 +51,7 @@ typedef struct _protocol_t {
 	int len;
 	unsigned char inited;
 }protocol_t;
+
 void protocol_init(protocol_t * coder);
 /*
 encoder data into coder, reutrn 1 ok 0 false;

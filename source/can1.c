@@ -2,7 +2,7 @@
 #include "main_config.h"
 #include "fifo.h"
 
-FIFO_DEF(can1fifo, 128);
+FIFO_DEF(can1fifo, 1, 128);
 
 
 u8 Can1_Configuration_mask(u8 FilterNumber, u16 ID, uint32_t id_type,  u16 ID_Mask , uint8_t sjw ,uint8_t bs1, uint8_t bs2, uint8_t prescale )
@@ -60,8 +60,8 @@ u8 Can1_Configuration_mask(u8 FilterNumber, u16 ID, uint32_t id_type,  u16 ID_Ma
 	CAN_FilterInit(&CAN_FilterInitStructure);
 	
 	// irq config 
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_CAN1_IRQ_PREPRIORITY;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_CAN1_IRQ_SUBPRIORITY;
 	
 	NVIC_InitStructure.NVIC_IRQChannel = USB_LP_CAN1_RX0_IRQn;							 
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -154,18 +154,17 @@ void Can1_Send(uint8_t id, uint8_t *data, int len)
 
 int Can1_get( unsigned char *data, int size)
 {
-	int i, count = 0;
-	count = fifo_valid_count( &can1fifo );
-	count = count<size ? count:size;
+	int i;
 	
 	CAN_ITConfig (CAN1, CAN_IT_FMP0, DISABLE);	
-	for( i=0 ; i< count ;i ++)
+	for( i=0 ; i< size ;i ++)
 	{
-		fifo_get( &can1fifo, &data[i]);
+		if( 0 == fifo_get( &can1fifo, &data[i]) )
+			break;
 	}
 	CAN_ITConfig (CAN1, CAN_IT_FMP0, ENABLE);	
 	
-	return count;
+	return i;
 }
 
 int Can1_getChar(unsigned char * data)

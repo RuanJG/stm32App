@@ -1,12 +1,15 @@
 #include "misc.h"
 #include "core_cm3.h"
-#include "bsp.h"
+#include "systick.h"
+#include "main_config.h"
 
 #define SysTick_Reloadvalue  8 //9-1
 
 
 #define SYSTICK_MS_MAX 0x0fffffff
 #define SYSTICK_OVERYFLOW_MAX 0x3fffffff
+
+
 volatile u32 TimingDelay = 0;
 volatile u32 systick_ms=0;
 volatile u32 systick_us=0;
@@ -89,7 +92,7 @@ int systick_check_timer(systick_time_t *time_t)
 	return 0;
 }
 
-u32 systick_get_ms()
+unsigned int systick_get_ms()
 {
 	systick_event();
 	return systick_ms;

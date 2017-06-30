@@ -1,8 +1,7 @@
 #include "stm32f10x_conf.h"
 #include "protocol.h"
 #include "iap.h"
-#include "bsp.h"
-#include "main_config.h"
+#include "system.h"
 
 
 //program step tag
@@ -10,72 +9,20 @@
 #define PROGRAM_STEP_GET_START 1
 #define PROGRAM_STEP_GET_DATA 2
 #define PROGRAM_STEP_END 3
-volatile unsigned char program_step = PROGRAM_STEP_NONE;
-
-
-//buffer for store file data
-#define PROGRAM_BUFF_SIZE FLASH_PAGE_SIZE
-unsigned char program_buff[FLASH_PAGE_SIZE];
-volatile unsigned int program_buff_index = 0;
-
-
-//data packget seq 
-unsigned char program_data_frame_seq = 0;
 
 
 //use for program flash
 volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
 
 
+
 // coders
-protocol_t decoder;
-protocol_t encoder;
+protocol_t iap_decoder;
+protocol_t iap_encoder;
 
 
-// controller can1 id
-unsigned int iap_controller_can_id = DEF_MAIN_CONTROLLER_CAN1_ID; 
-
-
-// iap_lost_ms if no data receive in iap_lost_ms , jump to app
-unsigned int _iap_lost_ms_max = 0;
-volatile unsigned int iap_lost_ms;
-
-// if flash has programed , iap_has_flashed_data will set 1
-volatile int iap_has_flashed_data = 0;
-
-// inited flag
-volatile char iap_inited_flag = 0;
-
-
-
-// timer , check timeout
-systick_time_t timeout_timer;
-
-
-
-// uart rx buffer
-#define UART_RX_BUFFER_SIZE 8
-#define CAN_RX_BUFFER_SIZE 8
-unsigned char uartRxBuffer[UART_RX_BUFFER_SIZE];
-unsigned char can1RxBuffer[CAN_RX_BUFFER_SIZE];
-
-
-void _memcpy(void *dst, const void *src, unsigned int n)
-{
-	const unsigned char *p = src;
-	unsigned char *q = dst;
-
-	while (n--) {
-		*q++ = *p++;
-	}
-}
-void _memset(void *dst, unsigned char data, unsigned int n)
-{
-	unsigned char *q = dst;
-	while (n--) {
-		*q++ = data;
-	}
-}
+unsigned char iap_port_type=0;
+Uart_t *iapUart;
 
 
 int is_app_flashed()
@@ -159,56 +106,14 @@ int clean_iap_tag()
 }
 
 
-void iap_reset()
+
+
+void iap_config_vect_table()
 {
-		//关中断
-	__set_PRIMASK(1);
-	__set_FAULTMASK(1);
-	
-	// vectreset reset cm3 but other extern hardword
-	//*((uint32_t*)0xE000ED0C) = 0x05FA0001;
-	// sysresetReq reset all ic hardword system
-	*((uint32_t*)0xE000ED0C) = 0x05FA0004;
-	while(1);
+	NVIC_SetVectorTable(NVIC_VectTab_FLASH, IAP_APP_ADDRESS-IAP_FIRMWARE_ADRESS);
 }
 
-void iap_jump_to_app_after_flash()
-{
-	bsp_deinit();
-	if( is_iap_tag_set() )
-		clean_iap_tag();
-	iap_reset();
-}
 
-typedef void(*iapFunction)(void);
-void iap_jump_to_app()
-{
-	iapFunction Jump_To_Application;
-	uint32_t JumpAddress;
-	
-	//return;
-	if( is_iap_tag_set() )
-		clean_iap_tag();
-	
-	// if flash has programed , reset 
-	if( iap_has_flashed_data == 1 )
-		iap_jump_to_app_after_flash();
-	
-	
-	/* If Program has been written */
-	if ( is_app_flashed())
-	{	
-		bsp_deinit();
-		// Set system control register SCR->VTOR , and the app need to set vector too 
-		//NVIC_SetVectorTable(NVIC_VectTab_FLASH, (IAP_APP_ADDRESS-IAP_FIRMWARE_ADRESS));
-		//jump
-		JumpAddress = *(__IO uint32_t*) (IAP_APP_ADDRESS + 4);
-		Jump_To_Application = (iapFunction) JumpAddress;
-		__set_MSP(*(__IO uint32_t*) IAP_APP_ADDRESS);
-		Jump_To_Application(); 
-	}
-	
-}
 
 
 
@@ -216,27 +121,24 @@ void iap_jump_to_app()
 
 void iap_send_packget( unsigned char *data , unsigned int size)
 {
-	protocol_encode(&encoder,data,size);
+	int i;
+	protocol_encode(&iap_encoder,data,size);
+	//TODO
+	if( iap_port_type ==1 )
+	{//use uart
+		for( i=0 ; i< iap_encoder.len; i++ )
+			Uart_PutChar(iapUart, iap_encoder.data[i]);
+	}
 	
-#if IAP_PORT_UART
-		Uart_send(encoder.data,encoder.len);
-#endif
-#if  IAP_PORT_CAN1
-		Can1_Send(encoder.data, encoder.len);
-#endif
+	if( iap_port_type == 2 )
+	{//use can1
+		Can1_Send(0x10,iap_encoder.data,iap_encoder.len);
+	}
 	
 }
 
 
 
-void answer_ack_ok(unsigned char id)
-{
-	unsigned char data[4];
-	data[0] = PACKGET_ACK_ID;
-	data[1] = PACKGET_ACK_OK;
-	data[2] = id;
-	iap_send_packget(data , 3);
-}
 void answer_ack_false(char error)
 {
 	unsigned char data[4];
@@ -248,186 +150,50 @@ void answer_ack_false(char error)
 
 
 
-int program_page_to_flash(uint32_t page_addr , unsigned char *data, int len)
+__weak void main_deinit();
+void jump_by_reset()
 {
-	// ok return 1 ; len < page return 0 ; erase error return -1 ;program error return  -2
-	int timeout ,index;
-	uint32_t word, addr;
+	main_deinit();
 	
-	if( len < FLASH_PAGE_SIZE ) return 0;
-
-	// Erase Page
-	timeout = 0;
-	do{
-		timeout++;
-		if(timeout > 100) return -1;
-		FLASHStatus = FLASH_ErasePage(page_addr);
-	}while( FLASHStatus != FLASH_COMPLETE );
+		//关中断
+	__set_PRIMASK(1);
+	__set_FAULTMASK(1);
 	
-	// Program data
-	addr = page_addr;
-	for( index = 3 ; index < len && index < FLASH_PAGE_SIZE ; index+=4){
-		timeout = 0;
-		do{
-			timeout++;
-			if(timeout > 100) return -2;
-			word = (data[index]<<24) | (data[index-1]<<16) | (data[index-2]<<8) | data[index-3];
-			FLASHStatus = FLASH_ProgramWord(addr,word);
-		}while( FLASHStatus != FLASH_COMPLETE );
-		addr+=4;
-	}
+	// vectreset reset cm3 but other extern hardword
+	//*((uint32_t*)0xE000ED0C) = 0x05FA0001;
+	// sysresetReq reset all ic hardword system
+	*((uint32_t*)0xE000ED0C) = 0x05FA0004;
 	
-	iap_has_flashed_data = 1;
 	
-	return 1;
-	
+	while(1);
 }
 
-
-volatile uint32_t program_addr;
-
-void flash_process_init()
+void iap_jump()
 {
-	FLASH_Unlock();
-	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
-	program_addr = IAP_APP_ADDRESS;
-	program_data_frame_seq = 0;
-}
-
-void flash_process_end()
-{
-	FLASH_Lock();
-}
-
-void init_program_buff()
-{
-	//初始化写flash app的操作
-	_memset(program_buff,0,PROGRAM_BUFF_SIZE);
-	program_buff_index = 0;
-	
-}
-int  flush_program_buff()
-{
-	//将还没有写到flash的数据写入
-	// return 0 ok;
-	// return PACKGET_ACK_FALSE_SEQ_FALSE seq error 
-	//return PACKGET_ACK_FALSE_ERASE_ERROR / PACKGET_ACK_FALSE_Program_ERROR program error
-	int res;
-	if( program_buff_index > 0 )
-	{
-		res = program_page_to_flash(program_addr, program_buff, FLASH_PAGE_SIZE);
-		// ok return 1 ; len < page return 0 ; erase error return -1 ;program error return  -2
-		if( res == -1){
-			return PACKGET_ACK_FALSE_ERASE_ERROR;
-		}else if( res == -2){
-			return PACKGET_ACK_FALSE_PROGRAM_ERROR;
+		if(1== set_iap_tag(IAP_TAG_UPDATE_VALUE) ){
+				jump_by_reset();
 		}else{
-			//ok
-			init_program_buff();
-			program_addr+= FLASH_PAGE_SIZE;
+				answer_ack_false(PACKGET_ACK_FALSE_PROGRAM_ERROR);
 		}
-	}
-	return 0;
-}
-
-int  handle_data_packget_data(unsigned char *data, int len)
-{
-//	储存数据，达到1page时，写入, 如果数据序列不符合，要求重发
-	// return 0 ok;
-	// return PACKGET_ACK_FALSE_SEQ_FALSE seq error 
-	//return PACKGET_ACK_FALSE_ERASE_ERROR / PACKGET_ACK_FALSE_Program_ERROR program error
-	int i,res;
-	unsigned char new_seq;
-	
-	//check seq
-	new_seq = (program_data_frame_seq+1)% PACKGET_MAX_DATA_SEQ;
-	if( new_seq != data[0] )
-	{
-		//error
-		answer_ack_false( PACKGET_ACK_FALSE_SEQ_FALSE );
-		return -1;
-	}
-	program_data_frame_seq = new_seq;
-	
-	// prgram data
-	res = 0;
-	for( i=1; i< len; i++){
-		program_buff[ program_buff_index++ ] =  data[i];
-		if( program_buff_index >= FLASH_PAGE_SIZE ){
-			res = program_page_to_flash(program_addr, program_buff, FLASH_PAGE_SIZE);
-			init_program_buff();
-		}
-	}
-	
-	// ok return 1 ; erase error return -1 ;program error return  -2
-	if( res == -1){
-		answer_ack_false(PACKGET_ACK_FALSE_ERASE_ERROR);
-	}else if( res == -2){
-		answer_ack_false( PACKGET_ACK_FALSE_PROGRAM_ERROR);
-	}else if ( res > 0){
-		//ok
-		program_addr+= FLASH_PAGE_SIZE;
-		answer_ack_ok(PACKGET_DATA_ID);
-	}else{
-		answer_ack_ok(PACKGET_DATA_ID);
-	}
-	return 0;
-}
-
-void handle_end_packget_data(unsigned char *data, int len)
-{
-	int res;
-
-	if( program_step == PROGRAM_STEP_GET_DATA ) {
-		res = flush_program_buff();
-		if( 0 ==  res){
-			answer_ack_ok(PACKGET_END_ID);
-			if(data[0] == PACKGET_END_JUMP ){
-				systick_delay_us(600000);
-				iap_jump_to_app();
-			}
-		}else {
-			answer_ack_false(res);// remote will resend this packget
-		}
-		flash_process_end();
-		program_step = PROGRAM_STEP_NONE;
-	}else{
-		// if no in program flash step , jump 
-		answer_ack_ok(PACKGET_END_ID);
-		if(data[0] == PACKGET_END_JUMP )
-		{
-			systick_delay_us(50000);
-			iap_jump_to_app();
-		}
-	}
 }
 
 
 
-
-void handle_packget(unsigned char *pkg, unsigned int len)
+static void handle_packget(unsigned char *pkg, unsigned int len)
 {
 	unsigned char id = pkg[0];
 	unsigned char *data = &pkg[1];
 	
+	if( len != 2 ) return;
 	switch ( id ){
 		case PACKGET_START_ID:
-			//if( program_step != PROGRAM_STEP_GET_DATA )
-			{
-				program_step = PROGRAM_STEP_GET_DATA ;
-				flash_process_init();
-				init_program_buff();
-				answer_ack_ok(PACKGET_START_ID);
-			}
+			iap_jump();
 			break;
 			
-		case PACKGET_DATA_ID:
-			handle_data_packget_data(data,len-1);
+		case PROGRAM_STEP_GET_DATA:
 			break;
 		
 		case PACKGET_END_ID:
-			if ( len == 2 )
-				handle_end_packget_data(data,len-1);
 			break;
 	}
 	
@@ -438,101 +204,57 @@ void handle_packget(unsigned char *pkg, unsigned int len)
 //this function call by uart or can1  receiver
 __STATIC_INLINE void iap_parase(unsigned char c)
 {
-	//iap_lost_ms = 0;
-	if( iap_inited_flag ==1 && 1 == protocol_parse( &decoder,c) )
+	if( 1 == protocol_parse( &iap_decoder,c) )
 	{
-		iap_lost_ms = 0;
-		handle_packget(decoder.data,decoder.len);
+		handle_packget(iap_decoder.data,iap_decoder.len);
 	}
 	
 }
 
 
-
-/*
-****************************************   irq call back   *************
-
-void uart_receive_event(unsigned char c)
+int iap_uart_receive_handler(unsigned char c)
 {
-	if( 1==IAP_PORT_UART)
-		iap_parase(c);
+	iap_parase(c);
+}
+
+
+void iap_init_in_uart(Uart_t *uart)
+{
+	protocol_init( &iap_decoder );
+	protocol_init( &iap_encoder );
+	iapUart = uart;
+	iapUart->read_cb = iap_uart_receive_handler;
+	iap_port_type = 1;
 }
 
 
 
-void can1_receive_event(CanRxMsg *msg)
-{
 
+
+
+
+
+
+
+__STATIC_INLINE int iap_can_receive_handler(CanRxMsg *RxMessage)
+{
 	int i;
 	
-	if( 1 == IAP_PORT_CAN1){
-		for( i=0 ; i< msg->DLC; i++)
-		{
-			iap_parase(msg->Data[i]);
-		}
-	}
-
-}
-
-**************************************************************************
-*/
-
-
-
-
-
-void iap_init()
-{
-	protocol_init(&encoder);
-	protocol_init(&decoder);
-	
-	systick_init_timer( &timeout_timer, 10);
-	
-	iap_inited_flag = 1;
-	
-	if( is_iap_tag_set() )
+	for( i=0 ; i< RxMessage->DLC; i++)
 	{
-		_iap_lost_ms_max = 60*1000 ;
-	}else{
-		_iap_lost_ms_max = 300;
+		iap_parase(RxMessage->Data[i]);
 	}
 }
 
-
-
-void iap_loop()
+//__weak void can1_receive_handler( CanRxMsg* RxMessage); this define in SetCan.c
+void can1_receive_handler( CanRxMsg* RxMessage)
 {
-	int i, count;
-	//check iap_lost_ms, it will be fill 0 in can1 or uart receive event
-
-#if IAP_PORT_UART
-	
-	count = Uart_get(uartRxBuffer,UART_RX_BUFFER_SIZE);
-	for(i=0; i< count ; i++)
-		iap_parase(uartRxBuffer[i]);
-#endif
-	
-	
-#if IAP_PORT_CAN1 
-	
-	count = Can1_get(can1RxBuffer,CAN_RX_BUFFER_SIZE);
-	for(i=0; i< count ; i++)
-		iap_parase(can1RxBuffer[i]);
-	
-#endif
-	
-	
-	if( systick_check_timer( &timeout_timer ) == 1)
-	{
-		if( iap_lost_ms  >= _iap_lost_ms_max )
-		{
-			iap_jump_to_app();
-		}else{
-			iap_lost_ms += 10;
-		}
-	}	
+	if( iap_port_type == 2 )
+		iap_can_receive_handler(RxMessage);
 }
 
-
-
+void iap_init_in_can1()
+{
+	iap_port_type = 2;
+}
 

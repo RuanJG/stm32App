@@ -7,7 +7,7 @@
 
 //id
 #define PACKGET_START_ID 1 //[id-start]data{[0]}
-#define PACKGET_ACK_ID 2 //[id-ack]data{[ACK_OK/ACK_FALSE/ACK/RESTART][error code/ if ok the id of received msg ]}
+#define PACKGET_ACK_ID 2 //[id-ack]data{[ACK_OK/ACK_FALSE/ACK/RESTART][error code]}
 #define PACKGET_DATA_ID 3 //[id-data] data{[seq][]...[]}
 #define PACKGET_END_ID 4 //[id-end] data{[stop/jump]}
 //data
@@ -30,7 +30,6 @@
 //********************************    config
 
 
-
 #if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
   #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
 #else
@@ -43,12 +42,13 @@
 // iap tag address : 	0x8000000 + 0x1c00	  	size=FLASH_PAGE_SIZE  			// 1K
 // app firmware adress :0x8000000 + + 0x1c00+ FLASH_PAGE_SIZE =  0x8002000		size = (0x10000 - 0x2000) = 0xE000	//56k
 
-// 1£¬ app flash in 0x8002400 0xDC00
+// iap_v0 20170307 : IAP_FIRMWARE_SIZE = 0x1c00 -> flash in 0x8002000 0xE000
+// iap_v1 20170309 : IAP_FIRMWARE_SIZE = 0x2000 -> flash in 0x8002400 0xdc00
 
 #define IAP_FIRMWARE_ADRESS (0x8000000)
-#define IAP_FIRMWARE_SIZE 0x2000 //8kB      //0x1C00    //7kB
+#define IAP_FIRMWARE_SIZE 0x2000    //8kB
 //tag 
-#define IAP_TAG_ADDRESS (IAP_FIRMWARE_ADRESS+IAP_FIRMWARE_SIZE)   //0x8002000
+#define IAP_TAG_ADDRESS (IAP_FIRMWARE_ADRESS+IAP_FIRMWARE_SIZE)
 #define IAP_TAG_UPDATE_VALUE 0xAB
 
 #define IAP_APP_ADDRESS (IAP_TAG_ADDRESS + FLASH_PAGE_SIZE)
@@ -60,10 +60,9 @@
 
 
 
+void iap_init_in_uart(Uart_t *uart);
+void iap_config_vect_table();
 
-void iap_init(void);
-
-void iap_loop(void);
 
 
 

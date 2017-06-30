@@ -1,5 +1,11 @@
 #include "stm32f10x_conf.h"
 #include "main_config.h"
+#include "iap.h"
+
+
+Uart_t Uart1;
+Uart_t Uart2;
+Uart_t Uart3;
 
 
 
@@ -73,6 +79,11 @@ void toggle_pin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 
 void bsp_init()
 {
+	
+#if BOARD_HAS_IAP
+	iap_config_vect_table();
+#endif
+	
 	NVIC_PriorityGroupConfig(CUSTOM_SYSTICK_IRQ_PRIORITY);
 	
 	//if no this setting , flash will very slow
@@ -82,12 +93,14 @@ void bsp_init()
 	
 	systick_init();
 	
+#if BOARD_HAS_IAP
 	if( 1 == IAP_PORT_UART)
-		uart_init();
+		iap_init_in_uart( uart1 )
 
 	if ( 1== IAP_PORT_CAN1 )
 		can1_init();
-
+#endif
+	
 }
 
 void bsp_event()
@@ -99,7 +112,9 @@ void bsp_event()
 
 void bsp_deinit()
 {
-	CAN_DeInit(CAN1);
-	USART_Cmd(UARTDEV, DISABLE);	
+	if ( 1== IAP_PORT_CAN1 )
+		CAN_DeInit(CAN1);
+	if( 1 == IAP_PORT_UART)
+		USART_Cmd(UARTDEV, DISABLE);	
 	systick_deinit();
 }
