@@ -159,7 +159,7 @@ int Can1_get( unsigned char *data, int size)
 	CAN_ITConfig (CAN1, CAN_IT_FMP0, DISABLE);	
 	for( i=0 ; i< size ;i ++)
 	{
-		if( 0 == fifo_get( &can1fifo, &data[i]) )
+		if( 0 == fifo_get( can1fifo, &data[i]) )
 			break;
 	}
 	CAN_ITConfig (CAN1, CAN_IT_FMP0, ENABLE);	
@@ -172,7 +172,7 @@ int Can1_getChar(unsigned char * data)
 	int count = 0;
 
 	CAN_ITConfig (CAN1, CAN_IT_FMP0, DISABLE);	
-	count = fifo_get( &can1fifo, data);
+	count = fifo_get( can1fifo, data);
 	CAN_ITConfig (CAN1, CAN_IT_FMP0, ENABLE);
 	return count;
 }
@@ -195,7 +195,12 @@ void CAN_Interrupt (void)
 	//can1_receive_event(&RxMessage);
 	for( i=0 ; i< RxMessage.DLC; i++)
 	{
-		fifo_force_put( &can1fifo, RxMessage.Data[i]);
+		fifo_put_force( can1fifo, RxMessage.Data[i]);
+		#if BOARD_HAS_IAP
+			if( 1== IAP_PORT_CAN1 ){
+				iap_can_receive_handler(RxMessage.Data[i]);
+			}
+		#endif
 	}
 }
 

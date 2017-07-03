@@ -369,7 +369,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F10X_MD,HSE_VALUE=8000000</Define>
               <Undefine></Undefine>
-              <IncludePath></IncludePath>
+              <IncludePath>.\source\app;.\source\board</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -410,87 +410,102 @@
       </TargetOption>
       <Groups>
         <Group>
-          <GroupName>source</GroupName>
+          <GroupName>board</GroupName>
           <Files>
-            <File>
-              <FileName>main.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\main.c</FilePath>
-            </File>
-            <File>
-              <FileName>main_config.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\main_config.h</FilePath>
-            </File>
             <File>
               <FileName>bsp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\source\bsp.c</FilePath>
+              <FilePath>.\source\board\bsp.c</FilePath>
             </File>
             <File>
               <FileName>bsp.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\source\bsp.h</FilePath>
+              <FilePath>.\source\board\bsp.h</FilePath>
             </File>
             <File>
               <FileName>can1.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\source\can1.c</FilePath>
-            </File>
-            <File>
-              <FileName>uart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\uart.c</FilePath>
-            </File>
-            <File>
-              <FileName>protocol.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\protocol.c</FilePath>
-            </File>
-            <File>
-              <FileName>protocol.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\protocol.h</FilePath>
-            </File>
-            <File>
-              <FileName>iap.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\iap.c</FilePath>
-            </File>
-            <File>
-              <FileName>iap.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\iap.h</FilePath>
-            </File>
-            <File>
-              <FileName>systick.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\systick.c</FilePath>
-            </File>
-            <File>
-              <FileName>fifo.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\fifo.c</FilePath>
-            </File>
-            <File>
-              <FileName>fifo.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\fifo.h</FilePath>
-            </File>
-            <File>
-              <FileName>systick.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\systick.h</FilePath>
-            </File>
-            <File>
-              <FileName>uart.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\uart.h</FilePath>
+              <FilePath>.\source\board\can1.c</FilePath>
             </File>
             <File>
               <FileName>can1.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\source\can1.h</FilePath>
+              <FilePath>.\source\board\can1.h</FilePath>
+            </File>
+            <File>
+              <FileName>fifo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\board\fifo.c</FilePath>
+            </File>
+            <File>
+              <FileName>fifo.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\board\fifo.h</FilePath>
+            </File>
+            <File>
+              <FileName>iap.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\board\iap.c</FilePath>
+            </File>
+            <File>
+              <FileName>iap.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\board\iap.h</FilePath>
+            </File>
+            <File>
+              <FileName>main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\board\main.c</FilePath>
+            </File>
+            <File>
+              <FileName>main_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\board\main_config.h</FilePath>
+            </File>
+            <File>
+              <FileName>protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\board\protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>protocol.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\board\protocol.h</FilePath>
+            </File>
+            <File>
+              <FileName>systick.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\board\systick.c</FilePath>
+            </File>
+            <File>
+              <FileName>systick.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\board\systick.h</FilePath>
+            </File>
+            <File>
+              <FileName>uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\board\uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\board\uart.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>app</GroupName>
+          <Files>
+            <File>
+              <FileName>app.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app.c</FilePath>
+            </File>
+            <File>
+              <FileName>app.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\app\app.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -519,8 +534,20 @@
           <targetInfo name="Target 1"/>
         </targetInfos>
       </component>
+      <component Cclass="Device" Cgroup="StdPeriph Drivers" Csub="ADC" Cvendor="Keil" Cversion="3.5.0" condition="STM32F1xx STDPERIPH RCC">
+        <package name="STM32F1xx_DFP" schemaVersion="1.4.0" url="http://www.keil.com/pack/" vendor="Keil" version="2.2.0"/>
+        <targetInfos>
+          <targetInfo name="Target 1"/>
+        </targetInfos>
+      </component>
       <component Cclass="Device" Cgroup="StdPeriph Drivers" Csub="CAN" Cvendor="Keil" Cversion="3.5.0" condition="STM32F1xx STDPERIPH RCC">
         <package name="STM32F1xx_DFP" schemaVersion="1.2" url="http://www.keil.com/pack/" vendor="Keil" version="2.1.0"/>
+        <targetInfos>
+          <targetInfo name="Target 1"/>
+        </targetInfos>
+      </component>
+      <component Cclass="Device" Cgroup="StdPeriph Drivers" Csub="DMA" Cvendor="Keil" Cversion="3.5.0" condition="STM32F1xx STDPERIPH RCC">
+        <package name="STM32F1xx_DFP" schemaVersion="1.4.0" url="http://www.keil.com/pack/" vendor="Keil" version="2.2.0"/>
         <targetInfos>
           <targetInfo name="Target 1"/>
         </targetInfos>

@@ -5,7 +5,7 @@ typedef struct _fifo_t {
 	volatile int		lock;
 	unsigned int		byteArray_len;
 	unsigned char *	byteArray_point;
-	size_t			size;
+	unsigned int			size;
 	volatile unsigned int		head;
 	volatile unsigned int		tail;
 }fifo_t;
@@ -32,7 +32,7 @@ int fifo_valid_item( fifo_t *fifo);
 int fifo_put_item(fifo_t *fifo , void * item);
 int fifo_put_item_force(fifo_t *fifo , void * item);
 int fifo_get_item(fifo_t *fifo, void * item);
-void fifo_init(fifo_t *fifo, char *buf, int size, int count);
+void fifo_init(fifo_t *fifo, unsigned char *buf, int size, int count);
 
 
 

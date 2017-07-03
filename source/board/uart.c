@@ -13,26 +13,7 @@
 #include  <stdio.h>	
 #include "main_config.h"
 #include "systick.h"
-
-#define UART_BUFFER_LEN 256
-typedef void (*uartReadCallBack)(char c);
-typedef struct _uart_t {
-	USART_TypeDef *uartDev;
-	uartReadCallBack read_cb;
-	fifo_t txfifo;
-	fifo_t rxfifo;
-	char txbuff[UART_BUFFER_LEN];
-	char rxbuff[UART_BUFFER_LEN];
-}Uart_t;
-void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_BaudRate, uint16_t USART_WordLength, uint16_t USART_StopBits, uint16_t USART_Parity);
-void Uart_PutChar(Uart_t *uart,char ch);
-void Uart_PutString (Uart_t *uart,char *buffer);
-void Uart_PutBytes (Uart_t *uart,const char *buffer, int len);
-int Uart_GetChar(Uart_t *uart, char *c);
-void Uart_DeInit (Uart_t *uart);
-
-
-
+#include "uart.h"
 
 Uart_t *uart1_p ;
 Uart_t *uart2_p ;
@@ -128,7 +109,7 @@ void _uart_irq_function(Uart_t *uart)
 		if( USART_GetFlagStatus(uartDev, USART_FLAG_RXNE) != RESET) // data recived
 		{
 			c=USART_ReceiveData(uartDev);
-			fifo_recovery_put(&uart->rxfifo,c);
+			fifo_put_force(&uart->rxfifo,c);
 			if( uart->read_cb != NULL)
 				uart->read_cb(c);
 		}

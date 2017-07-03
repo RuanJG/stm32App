@@ -1,7 +1,9 @@
 #include "stm32f10x_conf.h"
 #include "protocol.h"
 #include "iap.h"
-#include "system.h"
+#include "uart.h"
+#include "can1.h"
+
 
 
 //program step tag
@@ -127,7 +129,7 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 	if( iap_port_type ==1 )
 	{//use uart
 		for( i=0 ; i< iap_encoder.len; i++ )
-			Uart_PutChar(iapUart, iap_encoder.data[i]);
+			Uart_Put(iapUart, &iap_encoder.data[i], 1);
 	}
 	
 	if( iap_port_type == 2 )
@@ -150,10 +152,10 @@ void answer_ack_false(char error)
 
 
 
-__weak void main_deinit();
+//__weak void main_deinit();
 void jump_by_reset()
 {
-	main_deinit();
+	//main_deinit();
 	
 		//¹ØÖÐ¶Ï
 	__set_PRIMASK(1);
@@ -212,7 +214,7 @@ __STATIC_INLINE void iap_parase(unsigned char c)
 }
 
 
-int iap_uart_receive_handler(unsigned char c)
+void iap_uart_receive_handler(unsigned char c)
 {
 	iap_parase(c);
 }
@@ -236,25 +238,16 @@ void iap_init_in_uart(Uart_t *uart)
 
 
 
-__STATIC_INLINE int iap_can_receive_handler(CanRxMsg *RxMessage)
+void iap_can_receive_handler(unsigned char c )
 {
-	int i;
-	
-	for( i=0 ; i< RxMessage->DLC; i++)
-	{
-		iap_parase(RxMessage->Data[i]);
-	}
+	iap_parase(c);
 }
 
-//__weak void can1_receive_handler( CanRxMsg* RxMessage); this define in SetCan.c
-void can1_receive_handler( CanRxMsg* RxMessage)
-{
-	if( iap_port_type == 2 )
-		iap_can_receive_handler(RxMessage);
-}
 
 void iap_init_in_can1()
 {
+	protocol_init( &iap_decoder );
+	protocol_init( &iap_encoder );
 	iap_port_type = 2;
 }
 

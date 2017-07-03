@@ -1,4 +1,5 @@
 #include "fifo.h"
+#include "stdio.h"
 
 #define _LOG(X...) printf(X);
 
@@ -105,9 +106,11 @@ int fifo_put_item(fifo_t *fifo , void * item)
 	for( i=0 ; i<len ; i++ ){
 		if( 0 == fifo_put( fifo, itemP[ i ]) ){
 			_LOG("Error in put Item\n");
+			/*
 			fifo->head -= i;
 			if( fifo->head < 0 )
 				fifo->head += fifo->byteArray_len;
+			*/
 			return 0;
 		}
 	}
@@ -119,7 +122,6 @@ int fifo_put_item(fifo_t *fifo , void * item)
 int fifo_put_item_force(fifo_t *fifo , void * item)
 {
 	unsigned int len ;
-	int i;
 
 	len = fifo->size;
 	if( len >  fifo_free(fifo) ){
@@ -147,7 +149,7 @@ int fifo_get_item(fifo_t *fifo, void * item)
 	return 1;
 }
 
-void fifo_init(fifo_t *fifo, char *buf, int size, int count)
+void fifo_init(fifo_t *fifo, unsigned char *buf, int size, int count)
 {
 	fifo->lock = 0;
 	fifo->byteArray_len = size*count;
@@ -191,3 +193,5 @@ int main()
 
 }
 */
+
+

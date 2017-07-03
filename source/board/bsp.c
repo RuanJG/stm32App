@@ -1,7 +1,10 @@
 #include "stm32f10x_conf.h"
 #include "main_config.h"
 #include "iap.h"
-
+#include "uart.h"
+#include "can1.h"
+#include "bsp.h"
+#include "systick.h"
 
 Uart_t Uart1;
 Uart_t Uart2;
@@ -9,7 +12,7 @@ Uart_t Uart3;
 
 
 
-void gpio_init()
+void board_init()
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
@@ -18,25 +21,50 @@ void gpio_init()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 	
-	
-#if IAP_PORT_UART	
 	//USART1								  
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = UART_TX_PIN;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(UART_TX_GPIO, &GPIO_InitStructure);
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
     										  
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = UART_RX_PIN;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_Init(UART_RX_GPIO, &GPIO_InitStructure); 
+	GPIO_Init(GPIOA, &GPIO_InitStructure); 
+
+	Uart_Configuration (&Uart1, USART1, 115200, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+
+	//USART2								  
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+    										  
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+	GPIO_Init(GPIOA, &GPIO_InitStructure); 
 	
-	UART_PIN_REMAP_FUNC();
-#endif
+	Uart_Configuration (&Uart2, USART2, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 
 
-#if  IAP_PORT_CAN1
+	//USART3								  
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+    										  
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+	GPIO_Init(GPIOB, &GPIO_InitStructure); 
+	
+	Uart_Configuration (&Uart3, USART3, 9600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+
+#if 0
 	//CAN
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
@@ -49,29 +77,13 @@ void gpio_init()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);	
+	
+	Can1_Configuration_mask(0, CAN1_ID, CAN_ID_STD, 0x1ff , CAN_SJW_1tq, CAN_BS1_3tq, CAN_BS2_5tq, 4);
 #endif
-
+	
+	//swd
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 	
-}
-
-void can1_init()
-{
-	Can1_Configuration_mask(0, CAN1_ID, CAN_ID_STD, 0x1ff , CAN_SJW_1tq, CAN_BS1_3tq, CAN_BS2_5tq, 4);
-}
-
-void uart_init()
-{
-	Uart_Configuration();
-}
-
-
-void toggle_pin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
-{
-	if( GPIO_ReadOutputDataBit(GPIOx,GPIO_Pin)!= 0)
-		GPIO_ResetBits(GPIOx,GPIO_Pin);
-	else
-		GPIO_SetBits(GPIOx,GPIO_Pin);
 }
 
 
@@ -89,16 +101,21 @@ void bsp_init()
 	//if no this setting , flash will very slow
 	FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
 	
-	gpio_init();
-	
 	systick_init();
+	
+	
+	
+	board_init();
+	
+	
+	
 	
 #if BOARD_HAS_IAP
 	if( 1 == IAP_PORT_UART)
-		iap_init_in_uart( uart1 )
+		iap_init_in_uart( &Uart1 );
 
 	if ( 1== IAP_PORT_CAN1 )
-		can1_init();
+		iap_init_in_can1();
 #endif
 	
 }
@@ -114,7 +131,7 @@ void bsp_deinit()
 {
 	if ( 1== IAP_PORT_CAN1 )
 		CAN_DeInit(CAN1);
-	if( 1 == IAP_PORT_UART)
-		USART_Cmd(UARTDEV, DISABLE);	
+	//if( 1 == IAP_PORT_UART)
+		//USART_Cmd(UARTDEV, DISABLE);	
 	systick_deinit();
 }
