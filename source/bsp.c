@@ -99,7 +99,9 @@ void bsp_event()
 
 void bsp_deinit()
 {
-	CAN_DeInit(CAN1);
-	USART_Cmd(UARTDEV, DISABLE);	
+	if ( 1== IAP_PORT_CAN1 )
+		CAN_DeInit(CAN1);
+	if( 1 == IAP_PORT_UART)
+		USART_Cmd(UARTDEV, DISABLE);	
 	systick_deinit();
 }

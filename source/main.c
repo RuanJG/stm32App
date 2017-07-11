@@ -23,6 +23,5 @@ int main()
 		bsp_event();
 		iap_loop();	
 	}
-	return 0;
 }
 

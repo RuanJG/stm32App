@@ -10,9 +10,10 @@
 
 //*****************************************************  choose board
 #define BOARD_MAIN_CONTROLLER_TYPE 0
-#define BOARD_NAVIGATION_TYPE 1
+#define BOARD_NAVIGATION_TYPE 0
 #define BOARD_MONITOR_TYPE 0
 
+#define BOARD_TREX_TYPE 1
 
 
 
@@ -55,7 +56,21 @@
 #define IAP_PORT_CAN1 0
 #endif
 
-
+#if BOARD_TREX_TYPE
+#define IAP_PORT_UART 1
+#define IAP_PORT_CAN1 0
+//uart config , if IAP_PORT_UART==0 , do not care these 
+#define UARTDEV		 	USART1
+#define UART_TX_GPIO 	GPIOA
+#define UART_TX_PIN 	GPIO_Pin_9
+#define UART_RX_GPIO 	GPIOA
+#define UART_RX_PIN 	GPIO_Pin_10
+#define UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
+#define UART_BAUDRATE	115200
+//can1 config , if IAP_PORT_CAN1==0 , do not care these 
+#define CAN1_ID			0x11
+#define DEF_MAIN_CONTROLLER_CAN1_ID 0X0
+#endif
 
 
 
