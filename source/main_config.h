@@ -60,13 +60,13 @@
 #define IAP_PORT_UART 1
 #define IAP_PORT_CAN1 0
 //uart config , if IAP_PORT_UART==0 , do not care these 
-#define UARTDEV		 	USART1
-#define UART_TX_GPIO 	GPIOA
-#define UART_TX_PIN 	GPIO_Pin_9
-#define UART_RX_GPIO 	GPIOA
-#define UART_RX_PIN 	GPIO_Pin_10
+#define UARTDEV		 	USART3
+#define UART_TX_GPIO 	GPIOB
+#define UART_TX_PIN 	GPIO_Pin_10
+#define UART_RX_GPIO 	GPIOB
+#define UART_RX_PIN 	GPIO_Pin_11
 #define UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
-#define UART_BAUDRATE	115200
+#define UART_BAUDRATE	57600
 //can1 config , if IAP_PORT_CAN1==0 , do not care these 
 #define CAN1_ID			0x11
 #define DEF_MAIN_CONTROLLER_CAN1_ID 0X0
