@@ -184,7 +184,7 @@ void iap_jump()
 static void handle_packget(unsigned char *pkg, unsigned int len)
 {
 	unsigned char id = pkg[0];
-	unsigned char *data = &pkg[1];
+	//unsigned char *data = &pkg[1];
 	
 	if( len != 2 ) return;
 	switch ( id ){

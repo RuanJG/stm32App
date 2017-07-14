@@ -35,9 +35,14 @@ void fifo_unlock( fifo_t *fifo )
 }
 
 void fifo_clear( fifo_t *fifo ){
+	int i;
 	fifo->head = 0;
 	fifo->tail = 0;
-	memset(fifo->byteArray_point,0,fifo->byteArray_len);
+	//memset(fifo->byteArray_point,0,fifo->byteArray_len);
+	for( i=0; i< fifo->byteArray_len; i++ )
+	{
+		fifo->byteArray_point[i] = 0;
+	}
 }
 
 //return byte count in valid

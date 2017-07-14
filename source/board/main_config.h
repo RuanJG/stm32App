@@ -2,10 +2,9 @@
 #define _MAIN_CONFIG_H
 
 #include "stm32f10x.h"
-#include "bsp.h"
 
 
-
+//********************************************************** config irq priority
 
 #define CUSTOM_SYSTICK_IRQ_PRIORITY 	NVIC_PriorityGroup_2
 
@@ -23,6 +22,8 @@
 #define CUSTOM_DAM1_IRQ_SUBPRIORITY 0
 
 
+
+
 //**********************************************************  config board hse clock
 
 //config hse in "Options for Target" 
@@ -31,20 +32,9 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 //******************************************************** config iap 
 
-#include "iap.h"
+//check config in  "iap.h"
 
 #define BOARD_HAS_IAP  1
 #define IAP_PORT_UART  1

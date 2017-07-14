@@ -1,18 +1,16 @@
 #ifndef UART_H_
 #define UART_H_
 
-#include "stm32f10x.h"
 #include "fifo.h"
 #include  <ctype.h>
 #include  <string.h>
 #include  <stdio.h>	
-#include "main_config.h"
-#include "systick.h"
 
 
 
 
-#define UART_BUFFER_LEN 256
+
+#define UART_BUFFER_LEN 128
 
 typedef void (*uartReadCallBack)(unsigned char c);
 
@@ -30,7 +28,9 @@ void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_Ba
 void Uart_DeInit (Uart_t *uart);
 int Uart_Get(Uart_t *uart, unsigned char *buffer, int count);
 void Uart_Put(Uart_t *uart,unsigned char *data, int count);
-
-
+void Uart_config_console( Uart_t* uart );
+void Uart_Clear_Rx( Uart_t *uart );
+void Uart_Clear_Tx( Uart_t *uart );
+void Uart_Put_Sync(Uart_t *uart,unsigned char *data, int count);
 
 #endif

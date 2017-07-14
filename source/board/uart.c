@@ -112,6 +112,9 @@ void _uart_irq_function(Uart_t *uart)
 			fifo_put_force(&uart->rxfifo,c);
 			if( uart->read_cb != NULL)
 				uart->read_cb(c);
+			
+			//if( uartDev == USART3 )
+				//USART_SendData(USART1, tc);
 		}
 	}
 
@@ -122,6 +125,8 @@ void _uart_irq_function(Uart_t *uart)
 
 			if( 0 < fifo_get(&uart->txfifo,&tc) ){
 				USART_SendData(uartDev, tc);
+				//if( uartDev == USART3 )
+					//USART_SendData(USART1, tc);
 			}else{
 				USART_ITConfig(uartDev, USART_IT_TXE, DISABLE);
 			}
@@ -152,6 +157,9 @@ int Uart_Get(Uart_t *uart, unsigned char *buffer, int count){
 	// return the count of the data filled in buffer from uart fifo 
 	int i;
 	
+	if( uart == NULL )
+		return 0;
+	
 	USART_ITConfig(uart->uartDev, USART_IT_RXNE, DISABLE);
 	for( i=0; i< count; i++){
 		if( 0 == fifo_get(&uart->rxfifo, buffer+i ) ){
@@ -167,7 +175,12 @@ int Uart_Get(Uart_t *uart, unsigned char *buffer, int count){
 void Uart_Put(Uart_t *uart,unsigned char *data, int count)
 {
 	int i;
-	USART_TypeDef *uartDev = uart->uartDev;
+	USART_TypeDef *uartDev;
+	
+	if( uart == NULL )
+		return;
+	
+	uartDev = uart->uartDev;
 	
 	USART_ITConfig(uartDev, USART_IT_TXE, DISABLE);
 	
@@ -184,6 +197,74 @@ void Uart_Put(Uart_t *uart,unsigned char *data, int count)
 	USART_ITConfig(uartDev, USART_IT_TXE, ENABLE);
 }
 
+
+void Uart_Put_Sync(Uart_t *uart,unsigned char *data, int count)
+{
+	int i;
+	USART_TypeDef *uartDev;
+	
+	if( uart == NULL )
+		return;
+	
+	uartDev = uart->uartDev;
+	
+	USART_ITConfig(uartDev, USART_IT_TXE, DISABLE);
+	
+	for( i=0; i<count; i++){
+		while( USART_GetFlagStatus(uartDev, USART_FLAG_TXE) == RESET );
+		USART_SendData(uartDev, data[i]);
+	}
+	
+	USART_ITConfig(uartDev, USART_IT_TXE, ENABLE);
+}
+
+void Uart_Clear_Rx( Uart_t *uart )
+{
+	if( uart == NULL )
+		return;
+	
+	USART_ITConfig(uart->uartDev, USART_IT_RXNE, DISABLE);
+	
+	fifo_clear( &uart->rxfifo );
+	
+	USART_ITConfig(uart->uartDev, USART_IT_RXNE, ENABLE);
+}
+
+void Uart_Clear_Tx( Uart_t *uart )
+{
+	if( uart == NULL )
+		return;
+	
+	USART_ITConfig(uart->uartDev, USART_IT_TXE, DISABLE);
+	
+	fifo_clear( &uart->txfifo );
+	
+	USART_ITConfig(uart->uartDev, USART_IT_TXE, ENABLE);
+}
+
+
+
+Uart_t *pConsoleUart = NULL;
+
+
+void Uart_config_console( Uart_t* u )
+{
+	//TODO lock ?
+	
+	pConsoleUart = u;
+}
+
+
+
+int fputc(int ch, FILE *f)
+{
+	//TODO lock ?
+	
+	if( pConsoleUart != NULL ){
+		Uart_Put( pConsoleUart, (unsigned char*)&ch, 1);
+	}
+	return (ch);
+}
 
 
 //End of File

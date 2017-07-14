@@ -42,20 +42,18 @@
 // iap tag address : 	0x8000000 + 0x1c00	  	size=FLASH_PAGE_SIZE  			// 1K
 // app firmware adress :0x8000000 + + 0x1c00+ FLASH_PAGE_SIZE =  0x8002000		size = (0x10000 - 0x2000) = 0xE000	//56k
 
-// iap_v0 20170307 : IAP_FIRMWARE_SIZE = 0x1c00 -> flash in 0x8002000 0xE000
-// iap_v1 20170309 : IAP_FIRMWARE_SIZE = 0x2000 -> flash in 0x8002400 0xdc00
 
+
+
+// app flash in 0x8002400 0xDC00 (IAP_FLASH_SIZE-0x2400 = 0x10000-0x2400)
+// iap flash in 0x8000000 0x2400 ( iap 0x2000 + tag 0x400 )
+#define IAP_FLASH_SIZE (0x10000) // you can get this value in 'Target Option' , when you choose your stm32 ic
 #define IAP_FIRMWARE_ADRESS (0x8000000)
-#define IAP_FIRMWARE_SIZE 0x2000    //8kB
-//tag 
+#define IAP_FIRMWARE_SIZE 0x2000 //8kB      //0x1C00=7kB
 #define IAP_TAG_ADDRESS (IAP_FIRMWARE_ADRESS+IAP_FIRMWARE_SIZE)
 #define IAP_TAG_UPDATE_VALUE 0xAB
-
 #define IAP_APP_ADDRESS (IAP_TAG_ADDRESS + FLASH_PAGE_SIZE)
-#define IAP_APP_SIZE (0x10000 - IAP_FIRMWARE_SIZE - FLASH_PAGE_SIZE)
-
-
-
+#define IAP_APP_SIZE (IAP_FLASH_SIZE - IAP_FIRMWARE_SIZE - FLASH_PAGE_SIZE)
 
 
 
