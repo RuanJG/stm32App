@@ -678,17 +678,17 @@ void victor8165_init()
 	//set Rate
 	res = 0;
 	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "RATE F\n");
-		if( 1 == victor8165_check( "RATE?\n", "F\n") ){
+		victor8165_cmd( "RATE M\n");
+		if( 1 == victor8165_check( "RATE?\n", "M\n") ){
 			res = 1;
 			break;
 		}
 	}
 	if( res ) {
-		_LOG("victor8165_init: set Rate F mode ok\n");
+		_LOG("victor8165_init: set Rate M mode ok\n");
 		userStation_log("init: Rate ok");
 	}else{
-		_LOG("victor8165_init: set Rate F mode false\n");
+		_LOG("victor8165_init: set Rate M mode false\n");
 		userStation_log("init: Rate false");
 		return;
 	}
@@ -760,33 +760,35 @@ int victor8165_getCurrent( float *A)
 
 #define CALI_DATA_COUNT 10
 systick_time_t led_timer;
+systick_time_t collect_1s_timer;
 systick_time_t work_timer;
 static int work_counter;
 static int db_array[CALI_DATA_COUNT];
 static float current_array[CALI_DATA_COUNT];
 static unsigned char server_status; // 0: idel ,  1:cail
+static unsigned char server_collect_over;
 void server_init()
 {
-	//systick_init_timer( &led_timer, 1000 );
 	server_status =0;
 	work_counter = 0;
+	server_collect_over = 0;
 	victor8165_init();
 }
 
 void server_start()
 {
 	unsigned char tag;
+	int delay_ms = 10000;
 	
 	//delay 10000ms for start read data
-	systick_init_timer( &work_timer, 10000);
+	systick_init_timer( &work_timer, delay_ms);
+	//read current and db in 1s
+	systick_init_timer( &collect_1s_timer, 1000+delay_ms );
 	work_counter = 0;
+	server_collect_over = 0;
 	
 	tag = USER_START_TAG;	
 	userStation_send( &tag , 1 );
-	
-	//debug
-	//systick_init_timer( &led_timer, 2000 );
-	
 	
 	//set led status
 	led_on(LED_STATUS_ID);
@@ -854,19 +856,17 @@ void server_runtime()
 	
 	//led_on(LED_STATUS_ID);
 	
+	if( server_collect_over == 1 ) 
+		return ;
+	
 	//has collected enought records
-	if( work_counter >= CALI_DATA_COUNT ){
+	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
+		server_collect_over = 1;
+		//server_stop();
+		//server_status = 0;
 		return ;
 	}
 	
-
-	//debug
-	/*
-	if( 1 == systick_check_timer( &led_timer ) ){
-		server_stop();
-		return ;
-	}
-	*/
 	
 	res = 1;
 	
@@ -934,7 +934,7 @@ void app_init()
 	ADC_Configuration ();
 	led_pin_config();
 	
-	systick_delay_us(500000);
+	//systick_delay_us(500000);
 	
 	switch_det_config();
 	userStation_init();
