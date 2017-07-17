@@ -362,7 +362,7 @@ void led_pin_config()
 	led_off(LED_PASS_ID);
 	led_off(LED_VOICE_ERROR_ID);
 	led_off(LED_CURRENT_ERROR_ID);
-	led_on(LED_STATUS_ID);
+	led_off(LED_STATUS_ID);
 	
 }
 
@@ -414,31 +414,37 @@ void switch_det_event()
 	sw_counter++;
 	
 	if( sw_counter >= SW_MAX_COUNT ){
-		sw_counter = 0;
 		//_LOG("sw=%d\n",sw_value);
 		if( sw_value >= SW_MAX_COUNT ){
 			sw_on_tag = 1;
 		}else {
 			sw_on_tag = 0;
 		}
+		sw_value = 0;
+		sw_counter = 0;
 	}
 }
 
 
 
-
+// packget  head tag 
 #define USER_DATA_TAG	1
 #define USER_LOG_TAG	2
+#define USER_START_TAG	3
+#define USER_CMD_CHMOD_TAG 4
+#define USER_CMD_CURRENT_MAXMIN_TAG 5
+#define USER_CMD_VOICE_MAXMIN_TAG 6
+
+//packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
 #define USER_RES_VOICE_FALSE_FLAG 2
 #define USER_RES_ERROR_FLAG 4
 
+//work_mode value
 #define USER_MODE_ONLINE 1
 #define USER_MODE_OFFLINE 2
 
-#define USER_CMD_CHMOD 1
-#define USER_CMD_CURRENT_MAXMIN 2
-#define USER_CMD_VOICE_MAXMIN 3
+
 
 Uart_t *userUart=NULL;
 protocol_t encoder;
@@ -512,13 +518,13 @@ void userStation_handleMsg( unsigned char *data, int len)
 	unsigned char buffer[32]={0};
 	
 	switch( data[0] ){
-		case USER_CMD_CHMOD:
+		case USER_CMD_CHMOD_TAG:
 			if( len == 2 ){
 				userStation_mode = data[1];
 			}
 			break;
 			
-		case USER_CMD_CURRENT_MAXMIN:
+		case USER_CMD_CURRENT_MAXMIN_TAG:
 			if( len == 9 ){
 				memcpy( (char*)&cmax, data+1, 4);
 				memcpy( (char*)&cmin, data+5, 4);
@@ -529,7 +535,7 @@ void userStation_handleMsg( unsigned char *data, int len)
 			}
 			break;
 		
-		case USER_CMD_VOICE_MAXMIN:
+		case USER_CMD_VOICE_MAXMIN_TAG:
 			if( len == 9 ){
 				memcpy( (char*)&dbmax, data+1, 4);
 				memcpy( (char*)&dbmin, data+5, 4);
@@ -690,8 +696,8 @@ void victor8165_init()
 	//set range AUTO
 	res = 0;
 	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "AUTO\n");
-		if( 1 == victor8165_check( "AUTO?\n", "1\n") ){
+		victor8165_cmd( "RANGE 5\n");
+		if( 1 == victor8165_check( "RANGE1?\n", "6\n") ){
 			res = 1;
 			break;
 		}
@@ -769,10 +775,14 @@ void server_init()
 
 void server_start()
 {
+	unsigned char tag;
+	
 	//delay 10000ms for start read data
 	systick_init_timer( &work_timer, 10000);
 	work_counter = 0;
 	
+	tag = USER_START_TAG;	
+	userStation_send( &tag , 1 );
 	
 	//debug
 	//systick_init_timer( &led_timer, 2000 );
@@ -817,11 +827,11 @@ void server_stop()
 			error = 0;
 			if( current >= MAX_ALARM_CURRENT_VALUE ){
 				error |= USER_RES_CURRENT_FALSE_FLAG;
-				led_on(LED_VOICE_ERROR_ID);
+				led_on(LED_CURRENT_ERROR_ID);
 			}
 			if( db >= MAX_ALARM_VOICE_VALUE ){
 				error |= USER_RES_VOICE_FALSE_FLAG;
-				led_on(LED_CURRENT_ERROR_ID);
+				led_on(LED_VOICE_ERROR_ID);
 			}
 			userStation_report( db, current , work_counter, error);
 		}else{
@@ -841,7 +851,9 @@ void server_runtime()
 	
 	if( 0 == systick_check_timer( &work_timer ) )
 		return ;
-		
+	
+	//led_on(LED_STATUS_ID);
+	
 	//has collected enought records
 	if( work_counter >= CALI_DATA_COUNT ){
 		return ;
