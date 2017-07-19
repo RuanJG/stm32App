@@ -451,7 +451,7 @@ protocol_t encoder;
 protocol_t decoder;
 volatile unsigned char userStation_mode;
 float MAX_ALARM_CURRENT_VALUE = 0.5; //A
-float MIN_ALARM_CURRENT_VALUE = 0.025; //A
+float MIN_ALARM_CURRENT_VALUE = 0.4; //A
 int MAX_ALARM_VOICE_VALUE = 65 ;  //db
 
 
@@ -856,15 +856,13 @@ void server_runtime()
 	if( 0 == systick_check_timer( &work_timer ) )
 		return ;
 	
-	//led_on(LED_STATUS_ID);
-	
 	if( server_collect_over == 1 ) 
 		return ;
 	
 	//has collected enought records
 	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
 		server_collect_over = 1;
-		//server_stop();
+		server_stop();
 		//server_status = 0;
 		return ;
 	}
@@ -893,7 +891,7 @@ void server_runtime()
 		work_counter++;
 	
 	//will run this func after 100ms
-	systick_init_timer( &work_timer, 500);
+	systick_init_timer( &work_timer, 600);
 }
 
 void server_event()
@@ -910,7 +908,7 @@ void server_event()
 	}else{
 		
 		if( server_status == 1 ){
-			server_stop();
+			//server_stop();
 			server_status = 0;
 		}
 		
