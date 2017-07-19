@@ -450,7 +450,8 @@ Uart_t *userUart=NULL;
 protocol_t encoder;
 protocol_t decoder;
 volatile unsigned char userStation_mode;
-float MAX_ALARM_CURRENT_VALUE = 0.8; //A
+float MAX_ALARM_CURRENT_VALUE = 0.5; //A
+float MIN_ALARM_CURRENT_VALUE = 0.025; //A
 int MAX_ALARM_VOICE_VALUE = 65 ;  //db
 
 
@@ -529,6 +530,7 @@ void userStation_handleMsg( unsigned char *data, int len)
 				memcpy( (char*)&cmax, data+1, 4);
 				memcpy( (char*)&cmin, data+5, 4);
 				MAX_ALARM_CURRENT_VALUE = cmax;
+				MIN_ALARM_CURRENT_VALUE = cmin;
 				_LOG("set current max = %f\n", cmax);
 				sprintf((char*)buffer,"current=[%f,%f]",cmin, cmax);
 				userStation_log( (char*) buffer );
@@ -778,12 +780,12 @@ void server_init()
 void server_start()
 {
 	unsigned char tag;
-	int delay_ms = 10000;
+	int delay_ms = 3000;
 	
 	//delay 10000ms for start read data
 	systick_init_timer( &work_timer, delay_ms);
 	//read current and db in 1s
-	systick_init_timer( &collect_1s_timer, 1000+delay_ms );
+	systick_init_timer( &collect_1s_timer, 7000+delay_ms );
 	work_counter = 0;
 	server_collect_over = 0;
 	
@@ -817,7 +819,7 @@ void server_stop()
 	
 	
 	//TODO set led status
-	if( work_counter> 0 &&  current < MAX_ALARM_CURRENT_VALUE  && db < MAX_ALARM_VOICE_VALUE){
+	if( work_counter> 0 &&  current < MAX_ALARM_CURRENT_VALUE  && current > MIN_ALARM_CURRENT_VALUE && db < MAX_ALARM_VOICE_VALUE){
 		led_on(LED_PASS_ID);
 		led_off(LED_VOICE_ERROR_ID);
 		led_off(LED_CURRENT_ERROR_ID);
@@ -827,7 +829,7 @@ void server_stop()
 		led_off(LED_PASS_ID);
 		if( work_counter > 0 ){
 			error = 0;
-			if( current >= MAX_ALARM_CURRENT_VALUE ){
+			if( current >= MAX_ALARM_CURRENT_VALUE || current <= MIN_ALARM_CURRENT_VALUE ){
 				error |= USER_RES_CURRENT_FALSE_FLAG;
 				led_on(LED_CURRENT_ERROR_ID);
 			}
@@ -891,7 +893,7 @@ void server_runtime()
 		work_counter++;
 	
 	//will run this func after 100ms
-	systick_init_timer( &work_timer, 100);
+	systick_init_timer( &work_timer, 500);
 }
 
 void server_event()
