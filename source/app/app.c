@@ -574,23 +574,6 @@ void userStation_listen_even()
 
 
 
-int backup_save_data( unsigned char *data , int len)
-{
-	
-}
-
-int backup_save_setting( unsigned char *data, int len)
-{
-	
-}
-
-
-
-
-
-
-
-
 
 
 
@@ -887,8 +870,10 @@ void server_runtime()
 
 
 	//update counter
-	if( res == 1 )
+	if( res == 1 ){
+		userStation_report( db_array[ work_counter ], current_array[ work_counter ], 0, 0 ); 
 		work_counter++;
+	}
 	
 	//will run this func after 100ms
 	systick_init_timer( &work_timer, 600);
