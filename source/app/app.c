@@ -15,6 +15,12 @@ Uart_t Uart1;
 Uart_t Uart2;
 Uart_t Uart3;
 
+#define CURRENT_UART &Uart3
+#define PC_UART &Uart2
+#define CONSOLE_UART &Uart1
+#define IAP_UART &Uart2
+
+
 void Uart_init()
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
@@ -89,11 +95,11 @@ void Uart_init()
 
 
 
-	Uart_config_console( &Uart1 );
+	Uart_config_console( CONSOLE_UART );
 
 #if BOARD_HAS_IAP
 	if( 1 == IAP_PORT_UART)
-		iap_init_in_uart( &Uart3 );
+		iap_init_in_uart( IAP_UART );
 
 	if ( 1== IAP_PORT_CAN1 )
 		iap_init_in_can1();
@@ -457,7 +463,7 @@ int MAX_ALARM_VOICE_VALUE = 65 ;  //db
 
 void userStation_init()
 {
-	userUart = &Uart3;
+	userUart = PC_UART;
 	userStation_mode = USER_MODE_ONLINE;
 	protocol_init( &encoder );
 	protocol_init( &decoder );
@@ -639,7 +645,7 @@ void victor8165_init()
 {
 	int retry,res;
 	
-	victor8165Uart = &Uart2;
+	victor8165Uart = CURRENT_UART;
 	systick_init_timer( &victor8165_cmd_timer , 10);
 	
 	//set DCI mode
@@ -905,11 +911,13 @@ void test()
 	unsigned char data;
 	
 	if( 0 < Uart_Get( &Uart2, &data,1 ) ){
-		Uart_Put( &Uart3, &data, 1);
+		Uart_Put_Sync( &Uart2, &data, 1);
+		Uart_Put_Sync( &Uart1, &data, 1);
 	}
 	
 	if( 0 < Uart_Get( &Uart3, &data,1 ) ){
-		Uart_Put( &Uart2, &data, 1);
+		Uart_Put_Sync( &Uart3, &data, 1);
+		Uart_Put_Sync( &Uart1, &data, 1);
 	}
 }
 
