@@ -459,7 +459,7 @@ volatile unsigned char userStation_mode;
 float MAX_ALARM_CURRENT_VALUE = 0.5; //A
 float MIN_ALARM_CURRENT_VALUE = 0.4; //A
 int MAX_ALARM_VOICE_VALUE = 65 ;  //db
-
+int MIN_ALARM_VOICE_VALUE = 20 ;  //db
 
 void userStation_init()
 {
@@ -548,6 +548,7 @@ void userStation_handleMsg( unsigned char *data, int len)
 				memcpy( (char*)&dbmax, data+1, 4);
 				memcpy( (char*)&dbmin, data+5, 4);
 				MAX_ALARM_VOICE_VALUE = dbmax;
+				MIN_ALARM_VOICE_VALUE = dbmin;
 				_LOG("set db max = %d\n", dbmax);
 				sprintf((char*)buffer,"db=[%d,%d]",dbmin, dbmax);
 				userStation_log( (char*) buffer );
@@ -871,6 +872,11 @@ void server_runtime()
 	if( db_array[work_counter] < 0 ){
 		_LOG("error: read adc \n");
 		userStation_log("read adc false");
+		res = 0;
+	}
+	if( db_array[work_counter] < MIN_ALARM_VOICE_VALUE ){
+		_LOG("error: read Noise too low , check connection \n");
+		userStation_log("error: Noise too low");
 		res = 0;
 	}
 
