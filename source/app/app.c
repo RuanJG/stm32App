@@ -73,22 +73,6 @@ void Uart_init()
 	
 	Uart_Configuration (&Uart3, USART3, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 
-#if 0
-	//CAN
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-									
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);	
-	
-	Can1_Configuration_mask(0, CAN1_ID, CAN_ID_STD, 0x1ff , CAN_SJW_1tq, CAN_BS1_3tq, CAN_BS2_5tq, 4);
-#endif
 	
 	//swd
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
@@ -97,15 +81,6 @@ void Uart_init()
 
 	Uart_config_console( CONSOLE_UART );
 
-#if BOARD_HAS_IAP
-	if( 1 == IAP_PORT_UART)
-		iap_init_in_uart( IAP_UART );
-
-	if ( 1== IAP_PORT_CAN1 )
-		iap_init_in_can1();
-#endif
-
-	
 }
 
 
@@ -117,319 +92,209 @@ void Uart_init()
 
 
 
-#define ADC_SAMPLE_COUNT 34  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
-#define ADC_SAMPLE_CHANNEL_COUNT 1
-static unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
-volatile int adc_updated;
-
-void ADC_Configuration ()
-{										 
-	ADC_InitTypeDef ADC_InitStructure;
-	DMA_InitTypeDef DMA_InitStructure;
-	GPIO_InitTypeDef GPIO_InitStructure;
-	NVIC_InitTypeDef NVIC_InitStructure;
-
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);	
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
-	
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOC, &GPIO_InitStructure);	
-
-	
-	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
-	ADC_InitStructure.ADC_ScanConvMode = ENABLE;
-	ADC_InitStructure.ADC_ContinuousConvMode = ENABLE;
-	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
-	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
-	ADC_InitStructure.ADC_NbrOfChannel = ADC_SAMPLE_CHANNEL_COUNT;
-	ADC_Init(ADC1, &ADC_InitStructure);
-	
-	// 239.5 sampleTime => (239.5+12.5)/12M = 21us; 21*ADC_SAMPLE_COUNT * 3 = ADC_SAMPLE_COUNT * 63us = 1.890ms each group
-	// 71.5 smapleTime => 7us; 7us*ADC_SAMPLE_COUNT*3 = ADC_SAMPLE_COUNT* 21us = 0.630 ms 
-	ADC_RegularChannelConfig(ADC1, ADC_Channel_11, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
- 
-	// set ADC channel for temperature sensor
-	//ADC_TempSensorVrefintCmd(ENABLE);
-	
-	ADC_DMACmd(ADC1, ENABLE);  
-	ADC_Cmd(ADC1, ENABLE);
- 
-	ADC_ResetCalibration(ADC1);
-	while(ADC_GetResetCalibrationStatus(ADC1));
-
-	ADC_StartCalibration(ADC1);
-	while(ADC_GetCalibrationStatus(ADC1));
- 	ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-
-	
-	DMA_DeInit(DMA1_Channel1);
-	DMA_InitStructure.DMA_PeripheralBaseAddr = (unsigned int)&(ADC1->DR);	
-	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
-	DMA_InitStructure.DMA_BufferSize = ADC_SAMPLE_CHANNEL_COUNT*ADC_SAMPLE_COUNT;
-	DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-	DMA_InitStructure.DMA_MemoryBaseAddr = (unsigned int)&escADCConvert;
-	DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
-	DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
-	DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
-	DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
-	DMA_InitStructure.DMA_Priority = DMA_Priority_High;
-	DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
-
-	DMA_Init(DMA1_Channel1, &DMA_InitStructure);
-	DMA_ITConfig(DMA1_Channel1, DMA_IT_TC,ENABLE);
-	DMA_Cmd(DMA1_Channel1, ENABLE);
-
-
-  /* Enable DMA channel1 IRQ Channel */
-	NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel1_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_DAM1_IRQ_PREPRIORITY;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_DAM1_IRQ_SUBPRIORITY;
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_Init(&NVIC_InitStructure);
-	
-	adc_updated = 0;
-
-}
-
-void DMA1_Channel1_IRQHandler(void)
-{
- if(DMA_GetITStatus(DMA1_IT_TC1))
- {
-	 adc_updated = 1;
-	 DMA_ClearITPendingBit(DMA1_IT_GL1);
- }
-}
-
-
-unsigned short Cali_Adc_Value(int id)
-{
-	int i;
-	u32 max=0,min=0,tmp;
-	u32 sensor = 0; 
-	
-	max = escADCConvert[0][id];	
-	min = escADCConvert[0][id];
-	for(i=0;i<ADC_SAMPLE_COUNT;i++)
-	{
-		tmp = escADCConvert[i][id];
-		if( tmp > max ) max = tmp;
-		if( tmp < min ) min = tmp;
-		sensor += tmp;
-	}
-	sensor -= (max+min);
-	sensor = sensor/(ADC_SAMPLE_COUNT-2);
-	//sensor = sensor>>5;
-	return sensor;
-}
 
 
 
+
+
+
+
+
+
+
+#define LED_PWM_PERIOD 25500
+typedef struct _led_color_t {
+	unsigned int level;
+	unsigned char r;
+	unsigned char g;
+	unsigned char b;
+}led_color_t;
+static led_color_t led1_color;
+static led_color_t led2_color;
 
 /*
-*  get adc value
-*		if ok , return db ( db > 0 )
-*  	else  ,  return error ( -1 )
+*   config timer pwm , Note : need enable timer PeriphClock before call this 
 */
-int get_voice_db()
+int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0)
 {
-	unsigned short adc;
-	int db;
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+	TIM_OCInitTypeDef TIMOCInitStructure;
+	unsigned short prescaler ;
+	unsigned int clk  ;//36M
+
+	clk = SystemCoreClock/2;
+	if( timer == TIM1 )
+		clk = SystemCoreClock;
+
+	// freq = [36M/(prescaler(16bit)+1)] / period 
+	// preriod = 1000 , freq= 1000 Hz , prescaler = 36
+	prescaler = clk/period/freq_hz;
+	_LOG( "period=%d, freq=%d Hz, prescal=%d \n", period, freq_hz, prescaler);
+
+
+	TIM_Cmd(timer, DISABLE);
+	//TIM_DeInit(timer);
+	TIM_InternalClockConfig(timer);
 	
-	if( adc_updated == 0 )
-		return -1;
-	
-	adc = Cali_Adc_Value(0);
-	adc_updated = 0;
-	
-	//_LOG("adc=%d\n",adc);
-	//db = vol/10 ==> (adc*3300/4096) / 10
-	//db = (adc*2933)/40960;
-	db = (adc*3344)/40960;
-	
-	return db;
-	
-}
+	//base config
+	TIM_TimeBaseStructure.TIM_Period= period-1;
+	TIM_TimeBaseStructure.TIM_Prescaler= prescaler-1 ;
+	TIM_TimeBaseStructure.TIM_CounterMode=TIM_CounterMode_Up;
+	TIM_TimeBaseInit(timer, &TIM_TimeBaseStructure);
 
+	//pwm
+	TIMOCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; // pwm mode 1
+	TIMOCInitStructure.TIM_Pulse = 0 ;//default 0%
+	TIMOCInitStructure.TIM_OCPolarity = high1_low0==1? TIM_OCPolarity_High:TIM_OCPolarity_Low ;
+	TIMOCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#define LED_STATUS_ID 1
-#define LED_ERROR_ID 2
-#define LED_PASS_ID 3
-#define LED_VOICE_ERROR_ID 4
-#define LED_CURRENT_ERROR_ID 5
-
-#define LED_ON_CMD 1
-#define LED_OFF_CMD 2
-#define LED_CHECK_CMD 3
-
-int led_ctrl(int id, char cmd)
-{
-	GPIO_TypeDef* gpio;
-	uint16_t pin;
-	int onValue;
-
-	switch( id ){
-		case LED_STATUS_ID:
-			gpio = GPIOB; pin = GPIO_Pin_3; onValue = 0;
-			break;
-		case LED_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_4; onValue = 0;
-			break;
-		case LED_PASS_ID:
-			gpio = GPIOB; pin = GPIO_Pin_5; onValue = 0;
-			break;
-		case LED_VOICE_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_6; onValue = 0;
-			break;
-		case LED_CURRENT_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_7; onValue = 0;
-			break;		
-		
-	}
-	
-	if( cmd == LED_ON_CMD ){
-		if( onValue == 0 )
-			GPIO_ResetBits( gpio, pin );
-		else
-			GPIO_SetBits( gpio, pin);
-		return 0;
-		
-	}else if( cmd == LED_OFF_CMD ){
-		if( onValue == 0 )
-			GPIO_SetBits( gpio, pin);		
-		else
-			GPIO_ResetBits( gpio, pin );
-		return 0;
-		
-	}else if( cmd == LED_CHECK_CMD ){
-		return onValue == GPIO_ReadOutputDataBit( gpio, pin );
-		
-	}else{
+	switch( channel ){
+	case 1:
+		TIM_OC1Init(timer, &TIMOCInitStructure);
+		break;
+	case 2:
+		TIM_OC2Init(timer, &TIMOCInitStructure);
+		break;
+	case 3:
+		TIM_OC3Init(timer, &TIMOCInitStructure);
+		break;
+	case 4:
+		TIM_OC4Init(timer, &TIMOCInitStructure);
+		break;
+	default:
 		return -1;
 	}
-}
 
-void led_on(int id)
-{
-	led_ctrl( id, LED_ON_CMD );
-}
-
-void led_off(int id)
-{
-	led_ctrl( id, LED_OFF_CMD );
-}
-
-int is_led_on(int id)
-{
-	return led_ctrl( id, LED_CHECK_CMD );	
-}
-
-void led_toggle(int id)
-{
-	if( is_led_on(id)){
-		led_off(id);
-	}else{
-		led_on(id);
-	}
+	TIM_CtrlPWMOutputs(timer,ENABLE);
+	TIM_Cmd(timer, ENABLE);
+	return 0;
 }
 
 
-void led_pin_config()
-{
-	GPIO_InitTypeDef GPIO_InitStructure;	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
+void led1_red_pwm_set( uint16_t pwm )
+{//pwm5  C7(T3.2)
+	TIM_SetCompare2( TIM3 , pwm );
+}
 
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+void led1_blue_pwm_set( uint16_t pwm  )
+{//pwm4 B9(T4.4)
+	TIM_SetCompare4( TIM4 , pwm );
+}
+
+void led1_green_pwm_set( uint16_t pwm  )
+{//pwm6 C6(T3.1)
+	TIM_SetCompare1( TIM3 , pwm );
+}
+
+void led2_red_pwm_set( uint16_t pwm  )
+{//pwm2 B0(T1.2N)
+	TIM_SetCompare2( TIM1 , pwm );
+}
+
+void led2_green_pwm_set( uint16_t pwm  )
+{//pwm3 B8(T4.3)
+	TIM_SetCompare3( TIM4 , pwm );
+}
+
+void led2_blue_pwm_set( uint16_t pwm  )
+{//pwm1 B1(T1.3N)
+	TIM_SetCompare3( TIM1 , pwm );
+}
+
+
+void _led1_update( )
+{
+	led1_red_pwm_set( LED_PWM_PERIOD * led1_color.level * led1_color.r / 255 );
+	led1_green_pwm_set( LED_PWM_PERIOD * led1_color.level * led1_color.g / 255 );
+	led1_blue_pwm_set( LED_PWM_PERIOD * led1_color.level * led1_color.b / 255 );
+}
+void led1_set_level( unsigned int level )
+{
+	if( level > 100 ) return;
+	
+	led1_color.level = level;
+	_led1_update();
+}
+void led1_set_color( unsigned char red, unsigned char green, unsigned char blue )
+{
+	led1_color.r = red;
+	led1_color.g = green;
+	led1_color.b = blue;
+	_led1_update();
+}
+
+
+void _led2_update( )
+{
+	led2_red_pwm_set( LED_PWM_PERIOD * led2_color.level * led2_color.r / 255 );
+	led2_green_pwm_set( LED_PWM_PERIOD * led2_color.level * led2_color.g / 255 );
+	led2_blue_pwm_set( LED_PWM_PERIOD * led2_color.level * led2_color.b / 255 );
+}
+void led2_set_level( unsigned int level )
+{
+	if( level > 100 ) return;
+	
+	led2_color.level = level;
+	_led2_update();
+}
+void led2_set_color( unsigned char red, unsigned char green, unsigned char blue )
+{
+	led2_color.r = red;
+	led2_color.g = green;
+	led2_color.b = blue;
+	_led2_update();
+}
+
+
+
+void testpwmled_init()
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	
+	//gpio  B0(T1.2N) B1(T1.3N) B8(T4.3) B9(T4.4) C6(T3.1) C7(T3.2)
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
+	//PB
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_8 | GPIO_Pin_9;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP ;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
-	led_off(LED_ERROR_ID);
-	led_off(LED_PASS_ID);
-	led_off(LED_VOICE_ERROR_ID);
-	led_off(LED_CURRENT_ERROR_ID);
-	led_off(LED_STATUS_ID);
-	
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-static int sw_value;
-static int sw_counter;
-static int sw_on_tag;
-#define SW_MAX_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
-systick_time_t sw_timer;
-
-void switch_det_config()
-{
-	GPIO_InitTypeDef GPIO_InitStructure;	
-	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
-
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	//PC
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP ;
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	//remap
+	GPIO_PinRemapConfig(GPIO_PartialRemap_TIM1, ENABLE); // T1
+	GPIO_PinRemapConfig(GPIO_FullRemap_TIM3, ENABLE); // T3
 	
-	sw_value = 0;
-	sw_counter = 0;
-	sw_on_tag = 0;
+	//timer
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE); //APB1 36M clk
+	RCC_APB1PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE); //APB2 72M clk
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE); //APB1 36M clk
 	
-	systick_init_timer( &sw_timer, 10 );
+	pwm_init( TIM1, 2, LED_PWM_PERIOD , 100 , 0 );
+	pwm_init( TIM1, 3, LED_PWM_PERIOD , 100 , 0 );
+	pwm_init( TIM4, 3, LED_PWM_PERIOD , 100 , 1 );
+	pwm_init( TIM4, 4, LED_PWM_PERIOD , 100 , 1 );
+	pwm_init( TIM3, 1, LED_PWM_PERIOD , 100 , 1 );
+	pwm_init( TIM3, 2, LED_PWM_PERIOD , 100 , 1 );
 	
+	led1_set_color( 255, 255, 255 );
+	led1_set_level( 20 );
+
+	led2_set_color( 255, 255, 255 );
+	led2_set_level( 20 );
 }
 
-void switch_det_event()
-{
-	
-	if( 0 == systick_check_timer( &sw_timer ) )
-		return;
-	
-	sw_value +=  GPIO_ReadInputDataBit( GPIOC, GPIO_Pin_0 );
-	sw_counter++;
-	
-	if( sw_counter >= SW_MAX_COUNT ){
-		//_LOG("sw=%d\n",sw_value);
-		if( sw_value >= SW_MAX_COUNT ){
-			sw_on_tag = 1;
-		}else {
-			sw_on_tag = 0;
-		}
-		sw_value = 0;
-		sw_counter = 0;
-	}
-}
+
+
+
+
+
+
+
+
+
 
 
 
@@ -440,6 +305,7 @@ void switch_det_event()
 #define USER_CMD_CHMOD_TAG 4
 #define USER_CMD_CURRENT_MAXMIN_TAG 5
 #define USER_CMD_VOICE_MAXMIN_TAG 6
+#define USER_CMD_LED 7
 
 //packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
@@ -555,6 +421,19 @@ void userStation_handleMsg( unsigned char *data, int len)
 			}
 			break;
 		
+		case USER_CMD_LED:
+			if( len == 6 ){
+				if( data[1] == 1 ){
+					led1_set_level( data[2] );
+					led1_set_color( data[3], data[4] , data[5]);
+				}
+				if( data[1] == 2 ){
+					led2_set_level( data[2] );
+					led2_set_color( data[3], data[4] , data[5]);
+				}				
+			}
+			break;
+			
 		default:
 			break;
 	}
@@ -578,340 +457,6 @@ void userStation_listen_even()
 
 
 
-
-
-
-
-
-
-
-
-
-Uart_t *victor8165Uart;
-
-#define VICTOR8165_BUFFSIZE 32
-unsigned char victor8165_buf[VICTOR8165_BUFFSIZE];
-unsigned char victor8165_inited = 0;
-systick_time_t victor8165_cmd_timer;
-
-int victor8165_cmd( char * cmd  )
-{
-	int i,count,len;
-	
-	while( systick_check_timer( &victor8165_cmd_timer ) == 0 ){
-		systick_delay_us(500);
-	}
-	Uart_Clear_Rx( victor8165Uart );
-	
-	i = strlen(cmd);
-	Uart_Put_Sync( victor8165Uart, (unsigned char *)cmd, i );
-	//_LOG("cmd:%s",cmd);
-	
-	//get result , 1000ms timeout;
-	count = 0;
-	len = 0;
-	for( i=0; i< 500 ; i++ ){
-		count = Uart_Get( victor8165Uart, &victor8165_buf[len] , VICTOR8165_BUFFSIZE - len);
-		len += count;
-		if( len > 0 && victor8165_buf[len-1]==0x0A ){
-			//systick_delay_us(50000);
-			systick_init_timer( &victor8165_cmd_timer , 10); // next cmd need to wait 50ms
-			return len;
-		}
-		if( count > 0 ) i--;
-		systick_delay_us( 1000 );
-	}
-	
-	//Uart_Put( victor8165Uart, (unsigned char *)"\n", 1 );
-	//systick_delay_us( 100000 );
-	_LOG("cmd:%s  timeout\n",cmd);
-	systick_init_timer( &victor8165_cmd_timer , 100); // next cmd need to wait 100ms
-	
-	return 0;
-}
-
-int victor8165_check(const char* cmd, const char *result)
-{
-	int len;
-	
-	len = victor8165_cmd( (char*) cmd);
-	if( len == strlen(result) && 0 == strncmp(result,(const char*) victor8165_buf, len ) ){
-		return 1;
-	}
-	return 0;
-}
-
-
-void victor8165_init()
-{
-	int retry,res;
-	
-	victor8165Uart = CURRENT_UART;
-	systick_init_timer( &victor8165_cmd_timer , 10);
-	
-	//set DCI mode
-	res = 0;
-	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "ADC\n");
-		if( 1 == victor8165_check( "FUNC1?\n", "ADC\n") ){
-			res = 1;
-			break;
-		}
-	}
-	if( res ) {
-		_LOG("victor8165_init: set DCI mode ok\n");
-		userStation_log("init: DCI ok");
-	}else{
-		_LOG("victor8165_init: set DCI mode false\n");
-		userStation_log("init: DCI false");
-		return;
-	}
-	
-	//set Rate
-	res = 0;
-	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "RATE M\n");
-		if( 1 == victor8165_check( "RATE?\n", "M\n") ){
-			res = 1;
-			break;
-		}
-	}
-	if( res ) {
-		_LOG("victor8165_init: set Rate M mode ok\n");
-		userStation_log("init: Rate ok");
-	}else{
-		_LOG("victor8165_init: set Rate M mode false\n");
-		userStation_log("init: Rate false");
-		return;
-	}
-	
-	//set range AUTO
-	res = 0;
-	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "RANGE 5\n");
-		if( 1 == victor8165_check( "RANGE1?\n", "6\n") ){
-			res = 1;
-			break;
-		}
-	}
-	if( res ) {
-		_LOG("victor8165_init: set AUTO mode ok\n");
-		userStation_log("init: Auto ok");
-	}else{
-		_LOG("victor8165_init: set AUTO mode false\n");
-		userStation_log("init: Auto false");
-		return;
-	}
-	
-	victor8165_inited = 1;
-	
-}
-
-
-int victor8165_getCurrent( float *A)
-{
-	int retry, len;
-	
-	
-	if( victor8165_inited == 0 ||  0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
-		_LOG("victor8165_getCurrent: need to init\n");
-		victor8165_inited = 0;
-		victor8165_init();
-		return 0;
-	}
-	
-	
-	for( retry = 0; retry < 2; retry++ ){
-		len = victor8165_cmd( "MEAS1?\n");
-		if( len > 0 ) 
-			break;
-	}
-	
-	if( len == 0 ){
-		return 0;
-	}
-	
-	victor8165_buf[len] = 0; // set string end tag
-	sscanf((const char*)victor8165_buf , "%e;\n",  A);
-	//*mA = A*1000;
-	
-	return 1;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-#define CALI_DATA_COUNT 10
-systick_time_t led_timer;
-systick_time_t collect_1s_timer;
-systick_time_t work_timer;
-static int work_counter;
-static int db_array[CALI_DATA_COUNT];
-static float current_array[CALI_DATA_COUNT];
-static unsigned char server_status; // 0: idel ,  1:cail
-static unsigned char server_collect_over;
-void server_init()
-{
-	server_status =0;
-	work_counter = 0;
-	server_collect_over = 0;
-	victor8165_init();
-}
-
-void server_start()
-{
-	unsigned char tag;
-	int delay_ms = 3000;
-	
-	//delay 10000ms for start read data
-	systick_init_timer( &work_timer, delay_ms);
-	//read current and db in 1s
-	systick_init_timer( &collect_1s_timer, 7000+delay_ms );
-	work_counter = 0;
-	server_collect_over = 0;
-	
-	tag = USER_START_TAG;	
-	userStation_send( &tag , 1 );
-	
-	//set led status
-	led_on(LED_STATUS_ID);
-	led_off( LED_ERROR_ID );
-	led_off(LED_PASS_ID);
-	led_off(LED_VOICE_ERROR_ID);
-	led_off(LED_CURRENT_ERROR_ID);
-}
-
-void server_stop()
-{
-	int i,error;
-	float current;
-	int db;
-	
-	if( work_counter > 0 ){
-		db = 0;
-		for( i=0; i< work_counter; i++){
-			current+=current_array[i];
-			db+=db_array[i];
-		}
-		db = db/work_counter;
-		current = current/work_counter;
-		
-	}
-	
-	
-	//TODO set led status
-	if( work_counter> 0 &&  current < MAX_ALARM_CURRENT_VALUE  && current > MIN_ALARM_CURRENT_VALUE && db < MAX_ALARM_VOICE_VALUE){
-		led_on(LED_PASS_ID);
-		led_off(LED_VOICE_ERROR_ID);
-		led_off(LED_CURRENT_ERROR_ID);
-		led_off(LED_ERROR_ID);
-		userStation_report( db, current , work_counter, 0);
-	}else {
-		led_off(LED_PASS_ID);
-		if( work_counter > 0 ){
-			error = 0;
-			if( current >= MAX_ALARM_CURRENT_VALUE || current <= MIN_ALARM_CURRENT_VALUE ){
-				error |= USER_RES_CURRENT_FALSE_FLAG;
-				led_on(LED_CURRENT_ERROR_ID);
-			}
-			if( db >= MAX_ALARM_VOICE_VALUE ){
-				error |= USER_RES_VOICE_FALSE_FLAG;
-				led_on(LED_VOICE_ERROR_ID);
-			}
-			userStation_report( db, current , work_counter, error);
-		}else{
-			led_on(LED_ERROR_ID);
-			userStation_report( 0, 0 , work_counter, USER_RES_ERROR_FLAG);
-		}
-	}
-	
-	
-	//update status
-	led_off(LED_STATUS_ID);
-}
-
-void server_runtime()
-{	
-	int res;
-	
-	if( 0 == systick_check_timer( &work_timer ) )
-		return ;
-	
-	if( server_collect_over == 1 ) 
-		return ;
-	
-	//has collected enought records
-	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
-		server_collect_over = 1;
-		server_stop();
-		//server_status = 0;
-		return ;
-	}
-	
-	
-	res = 1;
-	
-	//get current by uart
-	if( 0 == victor8165_getCurrent( &current_array[ work_counter ] ) ){
-		_LOG("server_runtime: get current false\n");
-		userStation_log("read current false");
-		res = 0;
-	}
-	
-	//get db
-	db_array[ work_counter ] = get_voice_db();
-	if( db_array[work_counter] < 0 ){
-		_LOG("error: read adc \n");
-		userStation_log("read adc false");
-		res = 0;
-	}
-	if( db_array[work_counter] < MIN_ALARM_VOICE_VALUE ){
-		_LOG("error: read Noise too low , check connection \n");
-		userStation_log("error: Noise too low");
-		res = 0;
-	}
-
-
-	//update counter
-	if( res == 1 ){
-		userStation_report( db_array[ work_counter ], current_array[ work_counter ], 0, 0 ); 
-		work_counter++;
-	}
-	
-	//will run this func after 100ms
-	systick_init_timer( &work_timer, 600);
-}
-
-void server_event()
-{
-	if( sw_on_tag == 1 ){
-		
-		if( server_status == 0 ){
-			server_start();
-			server_status = 1;
-		}
-		if( server_status == 1 )
-			server_runtime();
-		
-	}else{
-		
-		if( server_status == 1 ){
-			//server_stop();
-			server_status = 0;
-		}
-		
-	}	
-}
-
 void test()
 {
 	unsigned char data;
@@ -927,24 +472,20 @@ void test()
 	}
 }
 
+
+
 void app_init()
 {
 	Uart_init();
-	ADC_Configuration ();
-	led_pin_config();
-	
-	//systick_delay_us(500000);
-	
-	switch_det_config();
 	userStation_init();
-	server_init();
+	systick_delay_us( 1000000 );
+	testpwmled_init();
 }
 
 
 void app_event()
 {
-	switch_det_event();
-	server_event();
+
 	userStation_listen_even();
 }
 
