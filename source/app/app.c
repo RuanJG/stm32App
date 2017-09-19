@@ -16,10 +16,12 @@ Uart_t Uart2;
 Uart_t Uart3;
 
 #define CURRENT_UART &Uart3
-#define PC_UART &Uart2
+#define PC_UART &Uart1
 #define CONSOLE_UART &Uart1
-#define IAP_UART &Uart2
+#define IAP_UART &Uart1
 
+
+systick_time_t led_timer;
 
 void Uart_init()
 {
@@ -80,6 +82,8 @@ void Uart_init()
 
 
 	Uart_config_console( CONSOLE_UART );
+	if( BOARD_HAS_IAP )
+		iap_init_in_uart( IAP_UART );
 
 }
 
@@ -101,8 +105,10 @@ void Uart_init()
 
 
 
+#define LED_LEVEL_MAX 10
+#define LED_PWM_PERIOD (255*LED_LEVEL_MAX)
+#define LED_PWM_FREQ 100
 
-#define LED_PWM_PERIOD 25500
 typedef struct _led_color_t {
 	unsigned int level;
 	unsigned char r;
@@ -122,14 +128,12 @@ int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_
 	unsigned short prescaler ;
 	unsigned int clk  ;//36M
 
-	clk = SystemCoreClock/2;
-	if( timer == TIM1 )
-		clk = SystemCoreClock;
+	clk = SystemCoreClock; // 72M
 
 	// freq = [36M/(prescaler(16bit)+1)] / period 
 	// preriod = 1000 , freq= 1000 Hz , prescaler = 36
 	prescaler = clk/period/freq_hz;
-	_LOG( "period=%d, freq=%d Hz, prescal=%d \n", period, freq_hz, prescaler);
+	_LOG( "clk=%d, period=%d, freq=%d Hz, prescal=%d \n", clk,period, freq_hz, prescaler);
 
 
 	TIM_Cmd(timer, DISABLE);
@@ -145,9 +149,17 @@ int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_
 	//pwm
 	TIMOCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; // pwm mode 1
 	TIMOCInitStructure.TIM_Pulse = 0 ;//default 0%
-	TIMOCInitStructure.TIM_OCPolarity = high1_low0==1? TIM_OCPolarity_High:TIM_OCPolarity_Low ;
-	TIMOCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
-
+	if( channel > 0 ){
+		TIMOCInitStructure.TIM_OCPolarity = high1_low0==1? TIM_OCPolarity_High:TIM_OCPolarity_Low ;
+		TIMOCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+		//TIMOCInitStructure.TIM_OutputNState = TIM_OutputNState_Disable;
+	}else{
+		TIMOCInitStructure.TIM_OCNPolarity = high1_low0==1? TIM_OCNPolarity_High:TIM_OCNPolarity_Low ;
+		TIMOCInitStructure.TIM_OutputNState = TIM_OutputNState_Enable;
+		//TIMOCInitStructure.TIM_OutputState = TIM_OutputState_Disable;
+		channel *= -1;
+	}
+	
 	switch( channel ){
 	case 1:
 		TIM_OC1Init(timer, &TIMOCInitStructure);
@@ -204,13 +216,13 @@ void led2_blue_pwm_set( uint16_t pwm  )
 
 void _led1_update( )
 {
-	led1_red_pwm_set( LED_PWM_PERIOD * led1_color.level * led1_color.r / 255 );
-	led1_green_pwm_set( LED_PWM_PERIOD * led1_color.level * led1_color.g / 255 );
-	led1_blue_pwm_set( LED_PWM_PERIOD * led1_color.level * led1_color.b / 255 );
+	led1_red_pwm_set( led1_color.level * led1_color.r  );
+	led1_green_pwm_set( led1_color.level * led1_color.g  );
+	led1_blue_pwm_set( led1_color.level * led1_color.b );
 }
 void led1_set_level( unsigned int level )
 {
-	if( level > 100 ) return;
+	if( level > LED_LEVEL_MAX ) return;
 	
 	led1_color.level = level;
 	_led1_update();
@@ -226,13 +238,13 @@ void led1_set_color( unsigned char red, unsigned char green, unsigned char blue 
 
 void _led2_update( )
 {
-	led2_red_pwm_set( LED_PWM_PERIOD * led2_color.level * led2_color.r / 255 );
-	led2_green_pwm_set( LED_PWM_PERIOD * led2_color.level * led2_color.g / 255 );
-	led2_blue_pwm_set( LED_PWM_PERIOD * led2_color.level * led2_color.b / 255 );
+	led2_red_pwm_set(  led2_color.level * led2_color.r );
+	led2_green_pwm_set(  led2_color.level * led2_color.g );
+	led2_blue_pwm_set(  led2_color.level * led2_color.b );
 }
 void led2_set_level( unsigned int level )
 {
-	if( level > 100 ) return;
+	if( level > LED_LEVEL_MAX ) return;
 	
 	led2_color.level = level;
 	_led2_update();
@@ -269,21 +281,21 @@ void testpwmled_init()
 	
 	//timer
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE); //APB1 36M clk
-	RCC_APB1PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE); //APB2 72M clk
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE); //APB2 72M clk
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE); //APB1 36M clk
 	
-	pwm_init( TIM1, 2, LED_PWM_PERIOD , 100 , 0 );
-	pwm_init( TIM1, 3, LED_PWM_PERIOD , 100 , 0 );
-	pwm_init( TIM4, 3, LED_PWM_PERIOD , 100 , 1 );
-	pwm_init( TIM4, 4, LED_PWM_PERIOD , 100 , 1 );
-	pwm_init( TIM3, 1, LED_PWM_PERIOD , 100 , 1 );
-	pwm_init( TIM3, 2, LED_PWM_PERIOD , 100 , 1 );
+	pwm_init( TIM1, -2, LED_PWM_PERIOD , LED_PWM_FREQ , 1 );
+	pwm_init( TIM1, -3, LED_PWM_PERIOD , LED_PWM_FREQ , 1 );
+	pwm_init( TIM4, 3, LED_PWM_PERIOD , LED_PWM_FREQ , 1 );
+	pwm_init( TIM4, 4, LED_PWM_PERIOD , LED_PWM_FREQ , 1 );
+	pwm_init( TIM3, 1, LED_PWM_PERIOD , LED_PWM_FREQ , 1 );
+	pwm_init( TIM3, 2, LED_PWM_PERIOD , LED_PWM_FREQ , 1 );
 	
-	led1_set_color( 255, 255, 255 );
-	led1_set_level( 20 );
+	//led1_set_color( 255, 255, 255 );
+	led1_set_level( 0 );
 
-	led2_set_color( 255, 255, 255 );
-	led2_set_level( 20 );
+	//led2_set_color( 255, 255, 255 );
+	led2_set_level( 0 );
 }
 
 
@@ -423,6 +435,9 @@ void userStation_handleMsg( unsigned char *data, int len)
 		
 		case USER_CMD_LED:
 			if( len == 6 ){
+				sprintf((char*)buffer,"led%d,l=%d,r=%d,g=%d,b=%d\n",data[1],data[2],data[3],data[4],data[5]);
+				userStation_log( (char*) buffer );
+				systick_init_timer( & led_timer, 10000 );
 				if( data[1] == 1 ){
 					led1_set_level( data[2] );
 					led1_set_color( data[3], data[4] , data[5]);
@@ -456,6 +471,40 @@ void userStation_listen_even()
 
 
 
+void led_test_init()
+{
+	systick_init_timer( & led_timer, 5000 );
+	
+	led1_set_color( 255, 255, 255 );
+	led1_set_level( LED_LEVEL_MAX/5 );
+
+	led2_set_color( 255, 255, 255 );
+	led2_set_level( LED_LEVEL_MAX/5 );
+}
+
+void led_test_event()
+{
+	if( systick_check_timer( &led_timer ) == 0 )
+		return;
+	
+	if( led1_color.g == 0 ){
+		led1_color.g = 255;
+	}else{
+		led1_color.g = 0;
+	}
+	if( led2_color.g == 0 ){
+		led2_color.g = 255;
+	}else{
+		led2_color.g = 0;
+	}
+	led1_color.level = LED_LEVEL_MAX/5; // %20
+	led2_color.level = LED_LEVEL_MAX/5;
+	_led1_update();
+	_led2_update();
+}
+
+
+
 
 void test()
 {
@@ -470,22 +519,45 @@ void test()
 		Uart_Put_Sync( &Uart3, &data, 1);
 		Uart_Put_Sync( &Uart1, &data, 1);
 	}
+	
+	if( 0 < Uart_Get( &Uart1, &data,1 ) ){
+		//Uart_Put_Sync( &Uart1, &data, 1);
+		Uart_Put_Sync( &Uart1, &data, 1);
+	}
 }
 
+
+void test1()
+{
+		GPIO_InitTypeDef GPIO_InitStructure;
+	
+	//gpio  B0(T1.2N) B1(T1.3N) B8(T4.3) B9(T4.4) C6(T3.1) C7(T3.2)
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB , ENABLE);
+	//PB
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_8 | GPIO_Pin_9;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	
+	GPIO_SetBits( GPIOB, GPIO_Pin_0 );
+}
 
 
 void app_init()
 {
 	Uart_init();
 	userStation_init();
-	systick_delay_us( 1000000 );
+	systick_delay_us( 200 );
 	testpwmled_init();
+	led_test_init();
+	//test1();
 }
 
 
 void app_event()
 {
-
+	//test();
+	led_test_event();
 	userStation_listen_even();
 }
 

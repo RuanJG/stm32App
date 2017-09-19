@@ -181,66 +181,130 @@
         <Bp>
           <Number>0</Number>
           <Type>0</Type>
-          <LineNumber>136</LineNumber>
+          <LineNumber>207</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134217990</Address>
+          <Address>134224306</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
           <SizeOfObject>0</SizeOfObject>
           <BreakByAccess>0</BreakByAccess>
           <BreakIfRCount>1</BreakIfRCount>
-          <Filename>RTE\Device\STM32F103R8\startup_stm32f10x_md.s</Filename>
+          <Filename>.\source\app\app.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\stm32f103_iap\RTE/Device/STM32F103R8/startup_stm32f10x_md.s\136</Expression>
+          <Expression>\\stm32f103_iap\source/app/app.c\207</Expression>
         </Bp>
         <Bp>
           <Number>1</Number>
           <Type>0</Type>
-          <LineNumber>135</LineNumber>
+          <LineNumber>217</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134217988</Address>
+          <Address>0</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
           <SizeOfObject>0</SizeOfObject>
           <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>RTE\Device\STM32F103R8\startup_stm32f10x_md.s</Filename>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\stm32f103_iap\RTE/Device/STM32F103R8/startup_stm32f10x_md.s\135</Expression>
+          <Expression></Expression>
         </Bp>
         <Bp>
           <Number>2</Number>
           <Type>0</Type>
-          <LineNumber>134</LineNumber>
+          <LineNumber>209</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134217986</Address>
+          <Address>0</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
           <SizeOfObject>0</SizeOfObject>
           <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>RTE\Device\STM32F103R8\startup_stm32f10x_md.s</Filename>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\stm32f103_iap\RTE/Device/STM32F103R8/startup_stm32f10x_md.s\134</Expression>
+          <Expression></Expression>
         </Bp>
         <Bp>
           <Number>3</Number>
           <Type>0</Type>
-          <LineNumber>9</LineNumber>
+          <LineNumber>219</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134223796</Address>
+          <Address>0</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
           <SizeOfObject>0</SizeOfObject>
           <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>.\source\board\main.c</Filename>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\stm32f103_iap\source/board/main.c\9</Expression>
+          <Expression></Expression>
+        </Bp>
+        <Bp>
+          <Number>4</Number>
+          <Type>0</Type>
+          <LineNumber>211</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>0</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression></Expression>
+        </Bp>
+        <Bp>
+          <Number>5</Number>
+          <Type>0</Type>
+          <LineNumber>221</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>0</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression></Expression>
+        </Bp>
+        <Bp>
+          <Number>6</Number>
+          <Type>0</Type>
+          <LineNumber>205</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>0</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression></Expression>
+        </Bp>
+        <Bp>
+          <Number>7</Number>
+          <Type>0</Type>
+          <LineNumber>215</LineNumber>
+          <EnabledFlag>1</EnabledFlag>
+          <Address>0</Address>
+          <ByteObject>0</ByteObject>
+          <HtxType>0</HtxType>
+          <ManyObjects>0</ManyObjects>
+          <SizeOfObject>0</SizeOfObject>
+          <BreakByAccess>0</BreakByAccess>
+          <BreakIfRCount>0</BreakIfRCount>
+          <Filename>.\source\app\app.c</Filename>
+          <ExecCommand></ExecCommand>
+          <Expression></Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>
