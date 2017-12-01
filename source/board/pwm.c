@@ -87,16 +87,16 @@ int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 	
 	switch( channel ){
 	case 1:
-		TIM_SetCompare2( timer , pwm );
+		TIM_SetCompare1( timer , pwm );
 		break;
 	case 2:
 		TIM_SetCompare2( timer , pwm );
 		break;
 	case 3:
-		TIM_SetCompare2( timer , pwm );
+		TIM_SetCompare3( timer , pwm );
 		break;
 	case 4:
-		TIM_SetCompare2( timer , pwm );
+		TIM_SetCompare4( timer , pwm );
 		break;
 	default:
 		return -1;
@@ -104,7 +104,33 @@ int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 	return 0; 
 }
 
-
+int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm)
+{
+	int channel;
+	
+	TIM_Cmd(timer, DISABLE);
+	
+	channel = pchannel<0 ? -1*pchannel : pchannel;
+	switch( channel ){
+	case 1:
+		TIM_SetCompare1( timer , pwm );
+		break;
+	case 2:
+		TIM_SetCompare2( timer , pwm );
+		break;
+	case 3:
+		TIM_SetCompare3( timer , pwm );
+		break;
+	case 4:
+		TIM_SetCompare4( timer , pwm );
+		break;
+	default:
+		break;
+	}
+	
+	TIM_Cmd(timer, ENABLE);
+	return 0; 
+}
 
 
 /*
@@ -139,13 +165,15 @@ int pwm_input( TIM_TypeDef* timer , unsigned short period, int freq_hz , int tim
 	}
 	
 	TIM_Cmd(timer, DISABLE);
-	//TIM_DeInit(timer);
+	TIM_DeInit(timer);
 	TIM_InternalClockConfig(timer);
 	
 	//base config
 	TIM_TimeBaseStructure.TIM_Period= period-1;
 	TIM_TimeBaseStructure.TIM_Prescaler= prescaler-1 ;
 	TIM_TimeBaseStructure.TIM_CounterMode=TIM_CounterMode_Up;
+	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
 	TIM_TimeBaseInit(timer, &TIM_TimeBaseStructure);
 	
 	// capture config
