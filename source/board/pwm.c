@@ -106,29 +106,15 @@ int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 
 int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 {
-	int channel;
 	
 	TIM_Cmd(timer, DISABLE);
+	//TIM_CtrlPWMOutputs( timer, DESABLE );
 	
-	channel = pchannel<0 ? -1*pchannel : pchannel;
-	switch( channel ){
-	case 1:
-		TIM_SetCompare1( timer , pwm );
-		break;
-	case 2:
-		TIM_SetCompare2( timer , pwm );
-		break;
-	case 3:
-		TIM_SetCompare3( timer , pwm );
-		break;
-	case 4:
-		TIM_SetCompare4( timer , pwm );
-		break;
-	default:
-		break;
-	}
+	pwm_set( timer, pchannel, pwm);
 	
 	TIM_Cmd(timer, ENABLE);
+	//TIM_CtrlPWMOutputs( timer, ENABLE );
+	
 	return 0; 
 }
 
