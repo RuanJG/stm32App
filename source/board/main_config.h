@@ -36,7 +36,7 @@
 
 //check config in  "iap.h"
 
-#define BOARD_HAS_IAP  0
+#define BOARD_HAS_IAP  1
 #define IAP_PORT_UART  1
 #define IAP_PORT_CAN1  0  // not support now
 

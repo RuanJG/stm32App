@@ -5,7 +5,7 @@
 *   channel : 1 2 3 4 -1 -2 -3 -4
 *   high1_low0 : positive or nagetive
 */
-int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0)
+int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0, int enable_OCx_irq)
 {
 	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
 	TIM_OCInitTypeDef TIMOCInitStructure;
@@ -56,15 +56,19 @@ int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_
 	switch( channel ){
 	case 1:
 		TIM_OC1Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC1,ENABLE );
 		break;
 	case 2:
 		TIM_OC2Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC2,ENABLE );
 		break;
 	case 3:
 		TIM_OC3Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC3,ENABLE );
 		break;
 	case 4:
 		TIM_OC4Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC4,ENABLE );
 		break;
 	default:
 		return -1;
@@ -74,6 +78,7 @@ int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_
 	TIM_Cmd(timer, ENABLE);
 	return 0;
 }
+
 
 
 /*
@@ -102,6 +107,14 @@ int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 		return -1;
 	}
 	return 0; 
+}
+
+
+void pwm_set_freq( TIM_TypeDef* timer , unsigned short freq)
+{
+	unsigned short period;
+	period = SystemCoreClock / (timer->PSC+1) / freq; 
+	TIM_SetAutoreload( timer , period );
 }
 
 int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm)

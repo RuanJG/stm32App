@@ -1,7 +1,7 @@
 #ifndef PWM_H_
 #define PWM_H_
 
-int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0);
+int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0, int enable_OCx_irq);
 int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm);
 int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm);
 /*
@@ -10,7 +10,7 @@ int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm);
 *   tim_channel : TIM_Channel_1 TIM_Channel_2 TIM_Channel_3 TIM_Channel_4
 */
 int pwm_input( TIM_TypeDef* timer , unsigned short period, int freq_hz , int tim_channel);
-
+void pwm_set_freq( TIM_TypeDef* timer , unsigned short freq);
 #endif 
 
 

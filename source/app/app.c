@@ -6,26 +6,18 @@
 #include "systick.h"
 #include "iap.h"
 #include "pwm.h"
+#include "LCD1602.h"
 
 #define _LOG(X...) if( 1 ) printf(X);
 
 
 
 Uart_t Uart1;
-Uart_t Uart2;
-Uart_t Uart3;
+//Uart_t Uart2;
+//Uart_t Uart3;
 
-#define CURRENT_UART &Uart3
-#define PC_UART &Uart1
 #define CONSOLE_UART &Uart1
 #define IAP_UART &Uart1
-
-
-
-#define RedLed_On() GPIO_WriteBit(GPIOB, GPIO_Pin_6, 0)
-#define RedLed_Off() GPIO_WriteBit(GPIOB, GPIO_Pin_6, 1)
-#define GreenLed_On() GPIO_WriteBit(GPIOB, GPIO_Pin_7, 0)
-#define GreenLed_Off() GPIO_WriteBit(GPIOB, GPIO_Pin_7, 1)
 
 
 
@@ -93,105 +85,674 @@ void Uart_init()
 
 
 
-void change_pwm_persen( int persen )
+
+#define MAX_FREQ 1000
+#define LIMIT_MAX_FREQ 400
+#define LIMIT_MIN_FREQ 1
+#define ONE_ROUND_FREQ 400  //xi feng 
+#define LIMIT_MAX_ROUND_COUNT 99
+#define LIMIT_MIN_ROUND_COUNT 1
+#define RATE_MAX_PULSE ONE_ROUND_FREQ // 用多少个pulse来做加减速
+#define RATE_MIN_PULSE 0
+#define RATE_FREQ 2
+#define MOTOR_LOOP_INTERVAL_MS 1000
+#define MOTOR1_ID 1
+#define MOTOR2_ID 2
+#define MOTOR_DIRECTION_RIGHT Bit_SET
+#define MOTOR_DIRECTION_LEFT Bit_RESET
+#define MOTOR_EN_ON Bit_SET
+#define MOTOR_EN_OFF Bit_RESET
+
+struct motor {
+	unsigned short expect_speed;
+	unsigned short expect_freq;
+	unsigned short expect_circle_count;
+	unsigned short current_freq;
+	unsigned short current_circle_count;
+	unsigned char direction;
+	unsigned char id;
+	unsigned int   current_pulse;
+	unsigned int   expect_pulse;
+	unsigned int   rate_reduce_pulse_point; 
+	unsigned int   accelerate_freq;
+	//pwm pin
+	GPIO_TypeDef* pGPIOx;
+	uint16_t pGPIO_pin;
+	//pwm
+	unsigned char channel;
+	TIM_TypeDef* timer ;
+	//dir pin
+	GPIO_TypeDef* dGPIOx;
+	uint16_t dGPIO_pin;
+	//en pin
+	GPIO_TypeDef* eGPIOx;
+	uint16_t eGPIO_pin;
+};
+
+volatile struct motor motor1;
+volatile struct motor motor2;
+systick_time_t motor_timer;
+
+
+void motor_set_direct(volatile struct motor *motorx , unsigned char direction) 
 {
-	//pwm_restart( TIM4 , 3 , 10*persen );
-	pwm_set( TIM4 , 3 , 10*persen );
+	GPIO_WriteBit( motorx->dGPIOx , motorx->dGPIO_pin, direction);
 }
 
-void pwm_output_init()
+void motor_en(volatile struct motor *motorx , unsigned char en)
+{
+	GPIO_WriteBit( motorx->eGPIOx , motorx->eGPIO_pin, en);
+}
+
+
+int motor_rate(volatile struct motor *motorx, unsigned short freq)
+{
+	unsigned short period;
+	
+	if( freq <= LIMIT_MIN_FREQ ){
+		// stop 
+		motor_en( motorx, MOTOR_EN_OFF);
+		pwm_set( motorx->timer, motorx->channel, 0);
+		_LOG("Motor%d set freq(%d)\n", motorx->id, freq);
+		
+	}else if( freq <= LIMIT_MAX_FREQ) {
+		//set freq
+		period = SystemCoreClock / (motorx->timer->PSC+1) / freq; 
+		TIM_SetAutoreload( motorx->timer , period );
+		pwm_set(motorx->timer , motorx->channel , period/2);
+		motor_en( motorx, MOTOR_EN_ON);
+		_LOG("Motor%d set freq(%d), start...\n", motorx->id, freq);
+	}else{
+		_LOG("Motor%d set freq(%d) error\n", motorx->id, freq); 
+		return -1;
+	}
+	
+	motorx->current_freq = freq;
+	return 0;
+}
+
+
+void motor_hw_init(volatile struct motor *motorx)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
-	//gpio  B0(T1.2N) B1(T1.3N) B8(T4.3) B9(T4.4) C6(T3.1) C7(T3.2)  A7(T3.2)
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOA, ENABLE);
-	//PB
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_8;
+	//pwm
+	GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP ;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
+	//default pwm=0 , set freq at max  ; motor controler freq 0-200KHZ , limit at [0,1000] hz
+	pwm_init(motorx->timer, motorx->channel, 20 ,  MAX_FREQ , 1 , 1); 
+	
+	//en pin
+	GPIO_InitStructure.GPIO_Pin=motorx->eGPIO_pin;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
+	GPIO_Init(motorx->eGPIOx, &GPIO_InitStructure);
+	motor_en( motorx, MOTOR_EN_OFF);
+	//dir pin
+	GPIO_InitStructure.GPIO_Pin=motorx->dGPIO_pin;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
+	GPIO_Init(motorx->dGPIOx, &GPIO_InitStructure);
+	motor_set_direct( motorx, motorx->direction);
+	
+	motor_rate(motorx, motorx->expect_freq);
+}
 
-	pwm_init( TIM4, 3, 1000 , 50 , 1 );
-	change_pwm_persen(20);
+void TIM2_IRQHandler()
+{
+	if( SET == TIM_GetITStatus(TIM2, TIM_IT_CC3 ) )
+	{
+		motor2.current_pulse++;
+		if( motor2.current_pulse >= motor2.expect_pulse ){
+			motor2.current_pulse = motor2.expect_pulse;
+			motor_rate( &motor2, 0 );
+		}
+		TIM_ClearITPendingBit(TIM2, TIM_IT_CC3);
+	}else{
+		//break here
+		TIM_ClearITPendingBit(TIM2, 0xFF);
+	}
+}
+
+void TIM3_IRQHandler()
+{
+	//if( SET == TIM_GetITStatus(TIM3 , TIM_IT_Update) )
+	if( SET == TIM_GetITStatus(TIM3, TIM_IT_CC2 ) )
+	{
+		motor1.current_pulse++;
+		if( motor1.current_pulse >= motor1.expect_pulse ){
+			motor1.current_pulse = motor1.expect_pulse;
+			motor_rate( &motor1, 0 );
+		}
+		TIM_ClearITPendingBit(TIM3, TIM_IT_CC2);
+	}else{
+		//break here
+		TIM_ClearITPendingBit(TIM3, 0xFF);
+	}
+}
+
+void motor_rate_check_even( volatile struct motor *motorx )
+{
+	int freq, exfreq;
+	
+	// has been stop
+	if( motorx->current_pulse >= motorx->expect_pulse )
+		return;
+	
+	//if time to reduce speed 
+	if( motorx->current_pulse >= motorx->rate_reduce_pulse_point ) {
+			motorx->expect_freq = motorx->accelerate_freq;
+	}
+	
+	// has been average speed
+	if( motorx->current_freq == motorx->expect_freq )
+		return;
+	
+	// add or reduce speed
+	exfreq = motorx->expect_freq;
+	if( motorx->current_freq < exfreq )
+	{
+		freq = motorx->current_freq + motorx->accelerate_freq;// add rate
+		freq = (freq <= exfreq) ? freq: exfreq;
+	}else{
+		freq = motorx->current_freq - motorx->accelerate_freq; // reduce rate
+		freq = (freq >= exfreq) ? freq: exfreq;
+	}
+	if( freq >= LIMIT_MIN_FREQ && freq <= LIMIT_MAX_FREQ ){
+		motor_rate( motorx, freq );
+	}else{
+		//call error
+	}
+	
+	
 }
 
 
-/*
-int pwm_capture_init()
-{
-	GPIO_InitTypeDef GPIO_InitStructure; 
-	NVIC_InitTypeDef NVIC_InitStructure;
 
+void motor_init()
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
 	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA, ENABLE);
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_7;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;// GPIO_Mode_IN_FLOATING;//GPIO_Mode_IPD ;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
+	motor1.id = MOTOR1_ID;
+	motor1.expect_speed = 0;
+	motor1.expect_freq = LIMIT_MIN_FREQ;
+	motor1.current_freq = 0;
+	motor1.expect_circle_count = 0;
+	motor1.direction = MOTOR_DIRECTION_RIGHT;
+	motor1.expect_pulse = 0;
+	motor1.current_pulse = 0;
+	//pwm pin
+	motor1.pGPIOx = GPIOA;
+	motor1.pGPIO_pin = GPIO_Pin_7;
+	//pwm
+	motor1.channel = 2;
+	motor1.timer = TIM3;
+	//dir pin
+	motor1.dGPIOx = GPIOA ;
+	motor1.dGPIO_pin = GPIO_Pin_6;
+	//en pin
+	motor1.eGPIOx = GPIOA;
+	motor1.eGPIO_pin = GPIO_Pin_15;
 	
-	if( 0 > pwm_input( TIM3 , 1000, 25 , TIM_Channel_2) ){
-		_LOG("pwm input init error \n");
-		return -1;
-	}
+	
+	
+	motor2.id = MOTOR2_ID;
+	motor2.expect_speed = 0;
+	motor2.expect_freq = LIMIT_MIN_FREQ;
+	motor2.current_freq = 0;
+	motor2.expect_circle_count = 0;
+	motor2.direction = MOTOR_DIRECTION_RIGHT;
+	motor2.expect_pulse = 0;
+	motor2.current_pulse = 0;
+	//pwm pin
+	motor2.pGPIOx = GPIOA;
+	motor2.pGPIO_pin = GPIO_Pin_2;
+	//pwm
+	motor2.channel = 3;
+	motor2.timer = TIM2;
+	//dir pin
+	motor2.dGPIOx = GPIOA ;
+	motor2.dGPIO_pin = GPIO_Pin_1;
+	//en pin
+	motor2.eGPIOx = GPIOA;
+	motor2.eGPIO_pin = GPIO_Pin_3;
+	
+	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB |RCC_APB2Periph_AFIO , ENABLE);
+	motor_hw_init(&motor1);
+	motor_hw_init(&motor2);
+	
 	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0; 
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1; 
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 
 	NVIC_Init(&NVIC_InitStructure);
 	
-	return 0;
-}
-
-volatile uint16_t period,duty;
-volatile int pwm_capture_availed = 0;
-
-void TIM3_IRQHandler(void)
-{
-	if( SET == TIM_GetITStatus(TIM3, TIM_IT_CC2 ) )
-	{
-		period = TIM_GetCapture2(TIM3);
-		if( period > 0 )
-		{
-			duty = TIM_GetCapture1(TIM3);
-			pwm_capture_availed = 1;
-		}else{
-			//break here
-			period = 0;
-			duty = 0;
-			pwm_capture_availed = 0;
-		}
-		TIM_ClearITPendingBit(TIM3, TIM_IT_CC2);
-	}else if( SET == TIM_GetITStatus(TIM3 , TIM_IT_Update) ){
-		period = TIM_GetCapture2(TIM3);
-		TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
-	}else{
-		//break here
-		TIM_ClearITPendingBit(TIM3, 0xFF);
-	}
-}
- 
- 
-void pwm_check_event()
-{
-	int diff;
+	NVIC_InitStructure.NVIC_IRQChannel = TIM2_IRQn;
+	NVIC_Init(&NVIC_InitStructure);
 	
-	if( pwm_capture_availed ){
-		pwm_capture_availed = 0;
-		//_LOG("pwm: %d,%d\n", period,duty);
-		diff = duty*2 - period;
-		diff = diff > 0 ? diff:(-1*diff);
-		if( diff < 5 ){
-			GreenLed_On();
-			_LOG("1");
-		}else{
-			GreenLed_Off();
-			_LOG("0");
+	systick_init_timer( &motor_timer , MOTOR_LOOP_INTERVAL_MS );
+	
+}
+
+
+
+
+
+void motor_loop()
+{
+	if( systick_check_timer( &motor_timer ) ){
+		motor_rate_check_even(&motor1);
+		motor_rate_check_even(&motor2);
+	}
+	
+}
+
+
+void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsigned int expect_pulse )
+{
+	//加速度是  RATE_FREQ/MOTOR_LOOP_INTERVAL_MS
+	// s = v0 * t + 0.5* a*t*t ; t= (v1-v0)/RATE_FREQ/MOTOR_LOOP_INTERVAL_MS
+	
+	//t = v/a;  
+	// s = v*t/2  ==>  s = v*(v/a)/2 = (v*v)/(a*2); 
+	float a = expect_freq*expect_freq/ONE_ROUND_FREQ ;// p/s*s
+	
+	// running
+	if( motorx->current_pulse < motorx->expect_pulse )
+		return;
+	// reinit parameter
+	if( expect_freq > LIMIT_MAX_FREQ || expect_freq < LIMIT_MIN_FREQ )
+		return;
+	if( expect_pulse > (LIMIT_MAX_ROUND_COUNT*ONE_ROUND_FREQ) || expect_pulse < (LIMIT_MIN_ROUND_COUNT*ONE_ROUND_FREQ) )
+		return;
+	motorx->expect_freq = expect_freq;
+	motorx->expect_pulse = expect_pulse;
+	motorx->current_pulse = 0;
+	
+	//add speed from 0-v: 0.5 round 最快的加速度
+	motorx->rate_reduce_pulse_point = expect_pulse - LIMIT_MIN_ROUND_COUNT*ONE_ROUND_FREQ/2;
+	
+	motorx->accelerate_freq = MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_FREQ;
+	
+	motor_set_direct( motorx, motorx->direction);
+}
+
+
+void motor_stop(volatile struct motor *motorx)
+{
+		// has stoped
+	if( motorx->current_pulse >= motorx->expect_pulse )
+		return;
+	
+	//goto the reduce rate state
+	if( motorx->current_pulse < motorx->rate_reduce_pulse_point )
+		motorx->current_pulse = motorx->rate_reduce_pulse_point;
+}
+
+
+
+
+
+
+#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
+  #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
+#else
+  #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
+#endif
+#define CONFIG_ADDRESS (0x8001000-FLASH_PAGE_SIZE)
+#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
+
+// the size of struct config should be n*4Byte
+struct config {
+	int config_avaliable;
+	int motor1_speed;
+	int motor1_circle_count;
+	int motor1_direction;
+	int motor2_speed;
+	int motor2_circle_count;
+	int motor2_direction;
+};
+volatile struct config g_config;
+
+
+void config_read()
+{
+	int * p;
+	__IO int* addr;
+	int i, int_count;
+	
+	addr = (__IO int*) CONFIG_ADDRESS;
+	int_count = sizeof( struct config )/sizeof( int );	
+	p = (volatile int*)&g_config;
+	for( i=0; i< int_count  ; i++ ){
+		*(p+i) = *(__IO int*) addr;
+		addr++;
+	}
+	
+}
+
+int config_save()
+{
+	int timeout, i, res;
+	volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
+	volatile int * data = (volatile int *) &g_config;
+	int addr = CONFIG_ADDRESS;
+	int int_count = sizeof( struct config )/sizeof( int );
+	
+	FLASHStatus = FLASH_COMPLETE;
+	FLASH_Unlock();
+	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
+	
+	res = 0;
+	timeout = 10;
+	while( timeout-- > 0)
+	{
+		FLASHStatus = FLASH_ErasePage(addr);
+		if( FLASHStatus == FLASH_COMPLETE ){
+			res = 1;
+			break;
 		}
-	}else{
-		GreenLed_Off();
+	}
+	
+	if( res == 1 )
+	{
+		for ( i = 0; i< int_count ; i++ )
+		{
+			res = 0;
+			timeout = 10;
+			while( timeout-- > 0)
+			{
+				FLASHStatus = FLASH_ProgramWord( addr+4*i, *(data+i) ) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
+				if( FLASHStatus == FLASH_COMPLETE ){
+					res = 1;
+					break;
+				}
+			}
+			if( res == 0 ) break;
+		}
+	}
+
+	FLASH_Lock();
+	
+	return res;
+}
+
+
+void config_init()
+{
+	//if no this setting , flash will very slow
+	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
+	g_config.config_avaliable = 0;
+	config_read();
+	g_config.config_avaliable = 1;
+}
+
+
+
+
+
+
+
+
+#define M1_SPEED_DATA_X 0
+#define M1_SPEED_DATA_Y 11 
+#define M1_ROUND_DATA_X 0
+#define M1_ROUND_DATA_Y 6
+
+#define M2_SPEED_DATA_X 1
+#define M2_SPEED_DATA_Y 11 
+#define M2_ROUND_DATA_X 1
+#define M2_ROUND_DATA_Y 6
+
+#define lcd_update_m1_round( )		lcd_display_number( M1_ROUND_DATA_X , M1_ROUND_DATA_Y , g_config.motor1_circle_count )
+#define lcd_update_m1_speed( )		lcd_display_number( M1_SPEED_DATA_X, M1_SPEED_DATA_Y , g_config.motor1_speed);
+#define lcd_update_m2_round( )		lcd_display_number( M2_ROUND_DATA_X , M2_ROUND_DATA_Y , g_config.motor2_circle_count);
+#define lcd_update_m2_speed( )		lcd_display_number( M2_SPEED_DATA_X, M2_SPEED_DATA_Y , g_config.motor2_speed);
+
+unsigned char lcd_data[2][16] = {
+	{'M','1',' ',' ','R',':','-','-',' ','S',':','-','-','-'},
+	{'M','2',' ',' ','R',':','-','-',' ','S',':','-','-','-'},
+};
+
+
+
+void lcd_display_number( int x, int y, int number)
+{
+	int i;
+	char number_buffer[8] = {0};
+	
+	sprintf( number_buffer,"%d",number);
+	i=0;
+	while( number_buffer[i++] != 0 ) LCD1602_Write(x, y+i, number_buffer[i] );
+}
+
+void lcd_init()
+{
+	int i,x,y;
+	LCD1602_Init();
+	
+	for( x=0; x<2 ; x++){
+		for( y=0; y< 16; y++)
+			LCD1602_Write( x, y, lcd_data[x][y] );
+	}
+	
+	if( g_config.config_avaliable ){
+		lcd_update_m1_round();
+		lcd_update_m1_speed();
+		lcd_update_m2_round();
+		lcd_update_m2_speed();
 	}
 }
- */
+
+
+
+
+
+volatile char current_point = 0 ; // 0 motor1 round ; 1 motor1 speed ; 2 motor2 round; 3 motor2 speed
+
+void round_add_key_toggle_handler()
+{
+	switch( current_point ){
+		case 0 :
+			if( g_config.motor1_circle_count < 100 )
+				g_config.motor1_circle_count++;
+			lcd_update_m1_round();
+			break;
+			
+		case 1:
+			if( g_config.motor1_speed < 200 )
+				g_config.motor1_speed++;
+			lcd_update_m1_speed();
+			break;
+			
+		case 3 :
+			if( g_config.motor2_circle_count < 100 )
+				g_config.motor2_circle_count++;
+			lcd_update_m2_round();
+			break;
+			
+		case 4:
+			if( g_config.motor2_speed < 200 )
+				g_config.motor2_speed++;
+			lcd_update_m2_speed();
+			break;
+			
+		default:
+			current_point = 0;
+			break;
+	}
+}
+
+void round_reduce_key_toggle_handler()
+{
+	switch( current_point ){
+		case 0 :
+			if( g_config.motor1_circle_count > 0 )
+				g_config.motor1_circle_count--;
+			lcd_update_m1_round();
+			break;
+			
+		case 1:
+			if( g_config.motor1_speed > 0 )
+				g_config.motor1_speed--;
+			lcd_update_m1_speed();
+			break;
+			
+		case 3 :
+			if( g_config.motor2_circle_count > 0 )
+				g_config.motor2_circle_count--;
+			lcd_update_m2_round();
+			break;
+			
+		case 4:
+			if( g_config.motor2_speed > 0 )
+				g_config.motor2_speed--;
+			lcd_update_m2_speed();
+			break;
+			
+		default:
+			current_point = 0;
+			break;
+	}
+}
+
+void start_key_press_handler()
+{
+	if( motor1.current_pulse >=  motor1.expect_pulse ){
+		_LOG("start motor1 speed=%d, round=%d\n", g_config.motor1_speed , g_config.motor1_circle_count * ONE_ROUND_FREQ );
+		motor_start( &motor1, g_config.motor1_speed , g_config.motor1_circle_count * ONE_ROUND_FREQ );
+	}else{ 
+		_LOG("stop motor1\n");
+		motor_stop( &motor1 );
+	}
+}
+
+void switch_key_press_handler()
+{
+	current_point++;
+	current_point %= 4;
+}
+
+
+
+
+#define SW_INTERVAL_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
+#define SW_INTERVAL_MS 5
+systick_time_t sw_timer;
+
+struct switcher {
+	unsigned char state ; // default level :0/1
+	unsigned char press_level; // 0/1
+	GPIO_TypeDef* GPIOx;
+	uint16_t GPIO_Pin;
+	void (*press_handler)();
+	void (*release_handler)();
+
+	unsigned short counter;
+	unsigned short sum;
+};
+
+volatile struct switcher round_add_key,round_reduce_key,start_key,switch_key;
+
+
+void switcher_init(volatile  struct switcher* sw, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , void *press_handler() , void *release_handler()   )
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	
+	sw->state = default_level; // default state
+	sw->press_level = press_level ; // gpio=0, when press 
+	sw->GPIOx = GPIOX;
+	sw->GPIO_Pin = GPIO_Pin_x;
+	sw->press_handler = press_handler;
+	sw->release_handler = release_handler;
+	
+	if( sw->GPIOx == GPIOA )
+			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+	else if ( sw->GPIOx == GPIOB )
+			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+	else if ( sw->GPIOx == GPIOC )
+			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
+	else if ( sw->GPIOx == GPIOD )
+			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
+	else if ( sw->GPIOx == GPIOE )
+			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOE, ENABLE);
+	
+	GPIO_InitStructure.GPIO_Pin = sw->GPIO_Pin;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IPU ;
+	GPIO_Init(sw->GPIOx, &GPIO_InitStructure);
+	
+	
+	sw->counter = 0;
+	sw->sum = 0;
+}
+
+
+void switcher_interval_check(volatile  struct switcher *sw )
+{
+	char level ;
+	
+	sw->sum += GPIO_ReadInputDataBit( sw->GPIOx, sw->GPIO_Pin );
+	sw->counter++;
+	
+	if( sw->counter  < SW_INTERVAL_COUNT ) return;
+	
+	if( 0 == sw->sum ){
+		// totally level 0
+		level = 0;
+	}else if( sw->sum == sw->counter ){
+		// totally level 1
+		level = 1;
+	}else{
+		level = 2;
+	}
+	
+	sw->counter = 0;
+	sw->sum = 0;
+	
+	if( level == 2 ) return;
+	
+	if( level == sw->press_level ){
+		if( sw->state != level && sw->press_handler != NULL ) sw->press_handler();
+		sw->state = level;
+		
+	}else{
+		if( sw->state != level && sw->release_handler != NULL ) sw->release_handler();
+		sw->state = level;
+	}
+}
+
+
+void switch_init()
+{
+	switcher_init( &round_add_key, 1 , 0 , GPIOA, GPIO_Pin_4, round_add_key_toggle_handler , NULL);
+	switcher_init( &round_reduce_key, 1, 0 , GPIOA, GPIO_Pin_5 , round_reduce_key_toggle_handler, NULL);
+	switcher_init( &start_key , 1, 0 , GPIOB, GPIO_Pin_0, start_key_press_handler ,NULL);
+	switcher_init( &switch_key, 1, 0 , GPIOB, GPIO_Pin_1, switch_key_press_handler ,NULL);
+	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
+}
+
+void switch_even()
+{
+	if( 0 == systick_check_timer( &sw_timer ) ) return;
+	
+	switcher_interval_check( &round_add_key );
+	switcher_interval_check( &round_reduce_key );
+	switcher_interval_check( &start_key );
+	switcher_interval_check( &switch_key );
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -301,385 +862,22 @@ unsigned short Cali_Adc_Value(int id)
 
 
 
-/*
-*  get adc value
-*		if ok , return db ( db > 0 )
-*  	else  ,  return error ( -1 )
-*/
-int get_vcc()
-{
-	while( adc_updated == 0) ;
-	return Cali_Adc_Value(0);
-}
-
-volatile int adc_sum,adc_countL,adc_countH, adc_mid;
-volatile int output_pwm_persen = 20;
-systick_time_t pwm_timer;
-
-//INTERVAL_MS * SAMPLE_COUNT = 400 ms , 50HZ=20ms a period, so we will sum 200ms/20ms=10 period .
-#define INTERVAL_MS 1 
-#define SAMPLE_COUNT 100 
 
 
-void pwm_adc_init()
-{
-	ADC_Configuration ();
-	systick_init_timer( &pwm_timer, INTERVAL_MS);
-	adc_sum = 0;
-	adc_countL = 0;
-	adc_countH = 0;
-	adc_mid = 10; // will change auto
-	output_pwm_persen = 20;
-	
-	GreenLed_Off();
-}
-
-void pwm_adc_event()
-{
-	int adc, persen,diff;
-	if( 0 == systick_check_timer( &pwm_timer ) ) return ;
-		
-	adc = get_vcc();
-	if( adc == -1 ) return;
-	//_LOG("v=%d\n", adc );
-
-	if( adc > adc_mid  ){
-		adc_sum ++;
-		adc_countH ++;
-	}else if( adc >=0 ){
-		adc_countL ++;
-		adc_sum ++;
-	}else{
-		;
-	}
-	if( adc_sum < SAMPLE_COUNT ) return ;
-	
-	// compare
-	//_LOG("mid=%d,H=%d,L=%d\n",adc_mid,adc_countH,adc_countL);
-	persen = adc_countH ; // adc_countH*100/adc_sum
-	diff = persen - output_pwm_persen;
-	diff = diff>0 ? diff:(-1*diff);
-	if( diff <= 3 ){
-		if( output_pwm_persen == 80 ){
-			_LOG("OK\n");
-			GreenLed_On();
-			RedLed_Off();
-			output_pwm_persen = 20;
-		}else{
-			output_pwm_persen += 30;
-		}
-	}else{
-		_LOG("NG\n");
-		GreenLed_Off();
-		RedLed_On();
-		output_pwm_persen = 20;
-		
-		//reset adc_mid
-		change_pwm_persen(100);
-		systick_delay_us(40000);
-		adc_mid = get_vcc();
-		_LOG("H=%d,",adc_mid);
-		change_pwm_persen(0);
-		systick_delay_us(40000);
-		adc_mid += get_vcc();
-		_LOG("S=%d,",adc_mid);
-		adc_mid = adc_mid >> 1;
-		_LOG("m=%d\n",adc_mid);
-	}
-	change_pwm_persen(output_pwm_persen);
-	//systick_delay_us(2000);
-	get_vcc();
-	
-	
-	// reinit
-	adc_sum = 0;
-	adc_countL = 0;
-	adc_countH = 0;
-	
-}
-
-
-
-
-
-
-
-
-
-void gpio_init()
-{
-	GPIO_InitTypeDef GPIO_InitStructure;
-	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOA, ENABLE);
-	
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_3 | GPIO_Pin_4;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	GPIO_ResetBits(GPIOB , GPIO_InitStructure.GPIO_Pin);
-	
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15 ;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-	GPIO_ResetBits(GPIOA , GPIO_InitStructure.GPIO_Pin);
-	
-	
-	// led pass false
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_7 | GPIO_Pin_6;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	GPIO_SetBits(GPIOB , GPIO_InitStructure.GPIO_Pin);
-	
-}
-
-void numberled_toggle()
-{
-	static int step = 0;
-	
-	GPIO_SetBits(GPIOA,GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
-	GPIO_SetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
-	switch ( step ){
-		case 0:
-			GPIO_ResetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
-			GPIO_ResetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
-			break;
-		case 1:
-			GPIO_ResetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15 );
-			GPIO_ResetBits(GPIOB,GPIO_Pin_15);
-			break;
-		case 2:
-			//GPIO_SetBits(GPIOA,GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4  | GPIO_Pin_6 | GPIO_Pin_8);
-			GPIO_ResetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_4 );
-			break;
-		case 3:
-			GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
-			GPIO_SetBits(GPIOB, GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
-			break;
-		default:
-			step = 0;
-			break;
-		
-	}
-	GPIO_WriteBit(GPIOA, GPIO_Pin_5,1);
-	GPIO_WriteBit(GPIOB, GPIO_Pin_3,1);
-	step++;
-	step %= 4;
-	
-}
-
-void barled_toggle()
-{
-	static int step = 0;
-	
-	GPIO_ResetBits(GPIOA,GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4 );
-	
-	switch ( step ){
-		case 0:
-			GPIO_SetBits(GPIOA,GPIO_Pin_0 );
-			break;
-		case 1:
-			GPIO_SetBits(GPIOA,GPIO_Pin_1 );
-			break;
-		case 2:
-			GPIO_SetBits(GPIOA,GPIO_Pin_2 );
-			break;
-		case 3:
-			GPIO_SetBits(GPIOA,GPIO_Pin_3 );
-			break;
-		case 4:
-			GPIO_SetBits(GPIOA,GPIO_Pin_4 );
-			break;
-		default:
-			step = 0;
-			break;
-		
-	}
-	step++;
-	step %= 5;
-}
-
-
-
-
-
-
-static int sw_value;
-static int sw_counter;
-static int sw_on_tag;
-static int sw_pressed;
-#define SW_MAX_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
-systick_time_t sw_timer;
-
-
-void switch_det_init()
-{
-	GPIO_InitTypeDef GPIO_InitStructure;
-	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_5;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IPU ;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
-	sw_value = 0;
-	sw_counter = 0;
-	sw_on_tag = 0;
-	sw_pressed = 0;
-	
-	systick_init_timer( &sw_timer, 10 );
-}
-
-void switch_det_event()
-{
-	
-	if( 0 == systick_check_timer( &sw_timer ) )
-		return;
-	
-	sw_value +=  GPIO_ReadInputDataBit( GPIOB, GPIO_Pin_5 );
-	sw_counter++;
-	
-	if( sw_counter >= SW_MAX_COUNT ){
-
-		//if( sw_value >= SW_MAX_COUNT ){
-		if( sw_value == 0 ){
-			sw_on_tag = 1;
-		}else {
-			sw_on_tag = 0;
-		}
-		sw_value = 0;
-		sw_counter = 0;
-		
-		
-		if( sw_pressed == 0 ){
-			sw_pressed = sw_on_tag;
-		}else{
-			if( sw_on_tag == 0 ){
-				sw_pressed = 2;
-				//or
-				//sw_pressed = 0;
-				//sw_press_handler();
-			}
-		}
-	}
-}
-
-int switch_is_pressed()
-{
-	if( sw_pressed == 2 ){
-		sw_pressed = 0;
-		return 1;
-	}
-	return 0;
-}
-
-int switch_is_on()
-{
-	return sw_on_tag;
-}
-
-
-
-
-
-
-volatile int suspend_mode = 0;
-volatile int key_press = 0;
-
-void EXTI_init(void)
-{
-	EXTI_InitTypeDef EXTI_InitStructure;  
-	NVIC_InitTypeDef NVIC_InitStructure;	
-
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource5);
-
-	EXTI_InitStructure.EXTI_Line = EXTI_Line5;    
-	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;//EXTI_Trigger_Rising;
-	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-	EXTI_Init(&EXTI_InitStructure);
-
-	NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_Init(&NVIC_InitStructure);
-}
-
-void enter_sleep()
-{
-	GreenLed_Off();
-	RedLed_Off();
-	PWR_EnterSTOPMode(PWR_Regulator_LowPower, PWR_STOPEntry_WFI);//进入停止模式
-}
-
-void wake_up()
-{
-	SystemInit();//时钟初始化
-	RedLed_On();
-}
-
-void EXTI9_5_IRQHandler()
-{
-	if(EXTI_GetITStatus(EXTI_Line5) != RESET)
-	{
-		EXTI_ClearITPendingBit(EXTI_Line5);
-		key_press = 1;
-		if( suspend_mode == 1 ){
-			wake_up();
-			suspend_mode = 0;
-			return;
-		}else{
-			suspend_mode = 1;
-			enter_sleep();
-		}
-	}
-}
-
-int is_key_press()
-{
-	if( key_press == 1 ){
-		key_press = 0;
-		return 1;
-	}
-	return 0;
-}
-
-
-
-
-
-
-systick_time_t led_timer;
 
 void app_init()
 {
-	// led io
-	gpio_init();
-	// uart debug
 	Uart_init();
-	// IR detect 
-	pwm_output_init();
-	pwm_adc_init();
-	// suspend button
-	//EXTI_init();
-	
-	// start ui led board display
-	systick_init_timer( &led_timer, 700);
-	//numberled_toggle();
-	//GPIO_SetBits(GPIOA,GPIO_Pin_4 |GPIO_Pin_3 |GPIO_Pin_2 |GPIO_Pin_1|GPIO_Pin_0  );
+	config_init();
+	motor_init();
+	lcd_init();
+	switch_init();
 }
 
 
 void app_event()
 {
-	if( 1 == systick_check_timer( &led_timer) ){
-		numberled_toggle();
-		
-		barled_toggle();
-	}
-
-	pwm_adc_event();
+	motor_loop();
+	switch_even();
 }
 
