@@ -12,6 +12,10 @@
 
 
 
+volatile char current_point = 0 ; // 0 motor1 round ; 1 motor1 speed ; 2 motor2 round; 3 motor2 speed
+
+
+
 Uart_t Uart1;
 //Uart_t Uart2;
 //Uart_t Uart3;
@@ -87,7 +91,8 @@ void Uart_init()
 
 
 #define MAX_FREQ 1000
-#define LIMIT_MAX_FREQ 400
+#define LIMIT_MAX_SPEED 60 // round/min
+#define LIMIT_MAX_FREQ 400 // LIMIT_MAX_SPEED / 60 *400
 #define LIMIT_MIN_FREQ 1
 #define ONE_ROUND_FREQ 400  //xi feng 
 #define LIMIT_MAX_ROUND_COUNT 99
@@ -95,7 +100,7 @@ void Uart_init()
 #define RATE_MAX_PULSE ONE_ROUND_FREQ // 用多少个pulse来做加减速
 #define RATE_MIN_PULSE 0
 #define RATE_FREQ 2
-#define MOTOR_LOOP_INTERVAL_MS 1000
+#define MOTOR_LOOP_INTERVAL_MS 10
 #define MOTOR1_ID 1
 #define MOTOR2_ID 2
 #define MOTOR_DIRECTION_RIGHT Bit_SET
@@ -114,7 +119,8 @@ struct motor {
 	unsigned int   current_pulse;
 	unsigned int   expect_pulse;
 	unsigned int   rate_reduce_pulse_point; 
-	unsigned int   accelerate_freq;
+	float          accelerate_freq;
+	float					 accel;
 	//pwm pin
 	GPIO_TypeDef* pGPIOx;
 	uint16_t pGPIO_pin;
@@ -149,10 +155,11 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 {
 	unsigned short period;
 	
-	if( freq <= LIMIT_MIN_FREQ ){
+	if( freq < LIMIT_MIN_FREQ ){
 		// stop 
 		motor_en( motorx, MOTOR_EN_OFF);
-		pwm_set( motorx->timer, motorx->channel, 0);
+		TIM_Cmd(motorx->timer, DISABLE);
+		//pwm_set( motorx->timer, motorx->channel, 0);
 		_LOG("Motor%d set freq(%d)\n", motorx->id, freq);
 		
 	}else if( freq <= LIMIT_MAX_FREQ) {
@@ -160,6 +167,7 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 		period = SystemCoreClock / (motorx->timer->PSC+1) / freq; 
 		TIM_SetAutoreload( motorx->timer , period );
 		pwm_set(motorx->timer , motorx->channel , period/2);
+		TIM_Cmd(motorx->timer, ENABLE);
 		motor_en( motorx, MOTOR_EN_ON);
 		_LOG("Motor%d set freq(%d), start...\n", motorx->id, freq);
 	}else{
@@ -247,20 +255,30 @@ void motor_rate_check_even( volatile struct motor *motorx )
 	}
 	
 	// has been average speed
-	if( motorx->current_freq == motorx->expect_freq )
+	if( motorx->current_freq == motorx->expect_freq ){
+		motorx->accel = 0;
 		return;
+	}
 	
 	// add or reduce speed
 	exfreq = motorx->expect_freq;
 	if( motorx->current_freq < exfreq )
 	{
-		freq = motorx->current_freq + motorx->accelerate_freq;// add rate
+		motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
+		freq = motorx->accel; // 去小数
+		motorx->accel -= freq;
+		freq += motorx->current_freq;// add rate
 		freq = (freq <= exfreq) ? freq: exfreq;
 	}else{
-		freq = motorx->current_freq - motorx->accelerate_freq; // reduce rate
+		motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
+		freq = motorx->accel; // 去小数
+		motorx->accel -= freq;
+		freq = motorx->current_freq - freq;// add rate
 		freq = (freq >= exfreq) ? freq: exfreq;
 	}
-	if( freq >= LIMIT_MIN_FREQ && freq <= LIMIT_MAX_FREQ ){
+	
+	
+	if( freq != motorx->current_freq &&  freq >= LIMIT_MIN_FREQ && freq <= LIMIT_MAX_FREQ ){
 		motor_rate( motorx, freq );
 	}else{
 		//call error
@@ -278,7 +296,7 @@ void motor_init()
 	
 	motor1.id = MOTOR1_ID;
 	motor1.expect_speed = 0;
-	motor1.expect_freq = LIMIT_MIN_FREQ;
+	motor1.expect_freq = 0;
 	motor1.current_freq = 0;
 	motor1.expect_circle_count = 0;
 	motor1.direction = MOTOR_DIRECTION_RIGHT;
@@ -301,7 +319,7 @@ void motor_init()
 	
 	motor2.id = MOTOR2_ID;
 	motor2.expect_speed = 0;
-	motor2.expect_freq = LIMIT_MIN_FREQ;
+	motor2.expect_freq = 0;
 	motor2.current_freq = 0;
 	motor2.expect_circle_count = 0;
 	motor2.direction = MOTOR_DIRECTION_RIGHT;
@@ -326,8 +344,8 @@ void motor_init()
 	motor_hw_init(&motor2);
 	
 	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0; 
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1; 
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_CAN1_IRQ_PREPRIORITY; 
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_CAN1_IRQ_SUBPRIORITY; 
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 
 	NVIC_Init(&NVIC_InitStructure);
 	
@@ -359,26 +377,40 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	
 	//t = v/a;  
 	// s = v*t/2  ==>  s = v*(v/a)/2 = (v*v)/(a*2); 
-	float a = expect_freq*expect_freq/ONE_ROUND_FREQ ;// p/s*s
+	float accel = 40; // p/ss //expect_freq*expect_freq/ONE_ROUND_FREQ ;// p/s*s
+	float ref_accel = 40;
+	int ref_freq = 100;
+	
+	accel = ref_accel * expect_freq/ref_freq ; //  根据速度与参考速度的比例 ，调整加速时间
 	
 	// running
-	if( motorx->current_pulse < motorx->expect_pulse )
+	if( motorx->current_pulse < motorx->expect_pulse ){
+		_LOG("motor%d start : is running , error\n", motorx->id);
 		return;
+	}
 	// reinit parameter
-	if( expect_freq > LIMIT_MAX_FREQ || expect_freq < LIMIT_MIN_FREQ )
+	if( expect_freq > LIMIT_MAX_FREQ || expect_freq < LIMIT_MIN_FREQ ){
+		_LOG("motor%d start : freq %d error\n", motorx->id, expect_freq);
 		return;
-	if( expect_pulse > (LIMIT_MAX_ROUND_COUNT*ONE_ROUND_FREQ) || expect_pulse < (LIMIT_MIN_ROUND_COUNT*ONE_ROUND_FREQ) )
+	}
+	if( expect_pulse > (LIMIT_MAX_ROUND_COUNT*ONE_ROUND_FREQ) || expect_pulse < (LIMIT_MIN_ROUND_COUNT*ONE_ROUND_FREQ) ){
+		_LOG("motor%d start : round count error\n", motorx->id);
 		return;
-	motorx->expect_freq = expect_freq;
-	motorx->expect_pulse = expect_pulse;
-	motorx->current_pulse = 0;
+	}
+
 	
 	//add speed from 0-v: 0.5 round 最快的加速度
 	motorx->rate_reduce_pulse_point = expect_pulse - LIMIT_MIN_ROUND_COUNT*ONE_ROUND_FREQ/2;
 	
-	motorx->accelerate_freq = MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_FREQ;
+	motorx->accelerate_freq = accel/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_FREQ;
+	motorx->rate_reduce_pulse_point = expect_pulse- expect_freq*expect_freq/2/accel;
+	motorx->accel = 0;
 	
 	motor_set_direct( motorx, motorx->direction);
+	
+	motorx->expect_freq = expect_freq;
+	motorx->expect_pulse = expect_pulse;
+	motorx->current_pulse = 0;
 }
 
 
@@ -403,7 +435,7 @@ void motor_stop(volatile struct motor *motorx)
 #else
   #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
 #endif
-#define CONFIG_ADDRESS (0x8001000-FLASH_PAGE_SIZE)
+#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
 #define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
 
 // the size of struct config should be n*4Byte
@@ -417,11 +449,11 @@ struct config {
 	int motor2_direction;
 };
 volatile struct config g_config;
-
+systick_time_t auto_save_config_timer;
 
 void config_read()
 {
-	int * p;
+	volatile int * p;
 	__IO int* addr;
 	int i, int_count;
 	
@@ -443,6 +475,8 @@ int config_save()
 	int addr = CONFIG_ADDRESS;
 	int int_count = sizeof( struct config )/sizeof( int );
 	
+	g_config.config_avaliable = 1;
+		
 	FLASHStatus = FLASH_COMPLETE;
 	FLASH_Unlock();
 	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
@@ -488,10 +522,27 @@ void config_init()
 	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
 	g_config.config_avaliable = 0;
 	config_read();
-	g_config.config_avaliable = 1;
+	if( g_config.config_avaliable != 1 ){
+		// never init
+		g_config.config_avaliable = 1;
+		g_config.motor1_circle_count = 0;
+		g_config.motor1_direction = MOTOR_DIRECTION_LEFT;
+		g_config.motor1_speed = 0;
+		g_config.motor2_circle_count = 0;
+		g_config.motor2_direction = MOTOR_DIRECTION_LEFT;
+		g_config.motor2_speed = 0;
+		
+		config_save();
+	}
+	systick_init_timer( &auto_save_config_timer , 1000 );
 }
 
-
+void config_auto_save_even()
+{
+	if( systick_check_timer( & auto_save_config_timer ) && g_config.config_avaliable == 2){
+		config_save();
+	}
+}
 
 
 
@@ -508,26 +559,46 @@ void config_init()
 #define M2_ROUND_DATA_X 1
 #define M2_ROUND_DATA_Y 6
 
-#define lcd_update_m1_round( )		lcd_display_number( M1_ROUND_DATA_X , M1_ROUND_DATA_Y , g_config.motor1_circle_count )
-#define lcd_update_m1_speed( )		lcd_display_number( M1_SPEED_DATA_X, M1_SPEED_DATA_Y , g_config.motor1_speed);
-#define lcd_update_m2_round( )		lcd_display_number( M2_ROUND_DATA_X , M2_ROUND_DATA_Y , g_config.motor2_circle_count);
-#define lcd_update_m2_speed( )		lcd_display_number( M2_SPEED_DATA_X, M2_SPEED_DATA_Y , g_config.motor2_speed);
+#define lcd_update_m1_round( )		_LOG( "r1=%d\n",g_config.motor1_circle_count);lcd_display_number( M1_ROUND_DATA_X , M1_ROUND_DATA_Y , g_config.motor1_circle_count, 2 )
+#define lcd_update_m1_speed( )		_LOG( "s1=%d\n",g_config.motor1_speed);lcd_display_number( M1_SPEED_DATA_X, M1_SPEED_DATA_Y , g_config.motor1_speed, 3)
+#define lcd_update_m2_round( )		_LOG( "r2=%d\n",g_config.motor2_circle_count);lcd_display_number( M2_ROUND_DATA_X , M2_ROUND_DATA_Y , g_config.motor2_circle_count, 2)
+#define lcd_update_m2_speed( )		_LOG( "s2=%d\n",g_config.motor2_speed);lcd_display_number( M2_SPEED_DATA_X, M2_SPEED_DATA_Y , g_config.motor2_speed, 3 )
 
 unsigned char lcd_data[2][16] = {
-	{'M','1',' ',' ','R',':','-','-',' ','S',':','-','-','-'},
-	{'M','2',' ',' ','R',':','-','-',' ','S',':','-','-','-'},
+	{'M','1',' ',' ','R',':',' ',' ',' ','S',':',' ',' ',' ',' ',' '},
+	{'M','2',' ',' ','R',':',' ',' ',' ','S',':',' ',' ',' ',' ',' '},
 };
 
 
 
-void lcd_display_number( int x, int y, int number)
+void lcd_display_number( int x, int y, int number, int count)
 {
-	int i;
-	char number_buffer[8] = {0};
-	
-	sprintf( number_buffer,"%d",number);
-	i=0;
-	while( number_buffer[i++] != 0 ) LCD1602_Write(x, y+i, number_buffer[i] );
+	for( ; count >0 ; count--)
+	{
+		LCD1602_Write(x, y+count-1, '0'+ number%10 );
+		number/=10;
+	}
+}
+
+void lcd_update_mouse()
+{
+	switch( current_point ){
+		case 0 :
+			LCD1602_SetMouse( M1_ROUND_DATA_X, M1_ROUND_DATA_Y+1);
+			break;
+			
+		case 1:
+			LCD1602_SetMouse( M1_SPEED_DATA_X, M1_SPEED_DATA_Y+2);
+			break;
+			
+		case 2 :
+			LCD1602_SetMouse( M2_ROUND_DATA_X, M2_ROUND_DATA_Y+1);
+			break;
+			
+		case 3:
+			LCD1602_SetMouse( M2_SPEED_DATA_X, M2_SPEED_DATA_Y+2);
+			break;
+	}
 }
 
 void lcd_init()
@@ -546,38 +617,43 @@ void lcd_init()
 		lcd_update_m2_round();
 		lcd_update_m2_speed();
 	}
+	
+	lcd_update_mouse();
 }
 
 
 
 
 
-volatile char current_point = 0 ; // 0 motor1 round ; 1 motor1 speed ; 2 motor2 round; 3 motor2 speed
 
 void round_add_key_toggle_handler()
 {
 	switch( current_point ){
 		case 0 :
-			if( g_config.motor1_circle_count < 100 )
+			if( g_config.motor1_circle_count < LIMIT_MAX_ROUND_COUNT ){
 				g_config.motor1_circle_count++;
+				g_config.config_avaliable = 2;
+			}
 			lcd_update_m1_round();
 			break;
 			
 		case 1:
-			if( g_config.motor1_speed < 200 )
-				g_config.motor1_speed++;
+			g_config.motor1_speed = g_config.motor1_speed+6 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor1_speed+6 ;
+			g_config.config_avaliable = 2;
 			lcd_update_m1_speed();
 			break;
 			
-		case 3 :
-			if( g_config.motor2_circle_count < 100 )
+		case 2 :
+			if( g_config.motor2_circle_count < LIMIT_MAX_ROUND_COUNT ){
 				g_config.motor2_circle_count++;
+				g_config.config_avaliable = 2;
+			}
 			lcd_update_m2_round();
 			break;
 			
-		case 4:
-			if( g_config.motor2_speed < 200 )
-				g_config.motor2_speed++;
+		case 3:
+			g_config.motor2_speed = g_config.motor2_speed+6 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor2_speed+6 ;
+			g_config.config_avaliable = 2;
 			lcd_update_m2_speed();
 			break;
 			
@@ -591,26 +667,30 @@ void round_reduce_key_toggle_handler()
 {
 	switch( current_point ){
 		case 0 :
-			if( g_config.motor1_circle_count > 0 )
+			if( g_config.motor1_circle_count > 0 ){
 				g_config.motor1_circle_count--;
+				g_config.config_avaliable = 2;
+			}
 			lcd_update_m1_round();
 			break;
 			
 		case 1:
-			if( g_config.motor1_speed > 0 )
-				g_config.motor1_speed--;
+			g_config.motor1_speed = g_config.motor1_speed-6 > 0 ? g_config.motor1_speed-6 : 0 ;
+			g_config.config_avaliable = 2;
 			lcd_update_m1_speed();
 			break;
 			
-		case 3 :
-			if( g_config.motor2_circle_count > 0 )
+		case 2 :
+			if( g_config.motor2_circle_count > 0 ){
 				g_config.motor2_circle_count--;
+				g_config.config_avaliable = 2;
+			}
 			lcd_update_m2_round();
 			break;
 			
-		case 4:
-			if( g_config.motor2_speed > 0 )
-				g_config.motor2_speed--;
+		case 3:
+			g_config.motor2_speed = g_config.motor2_speed-6 > 0 ? g_config.motor2_speed-6 : 0 ;
+			g_config.config_avaliable = 2;
 			lcd_update_m2_speed();
 			break;
 			
@@ -622,19 +702,40 @@ void round_reduce_key_toggle_handler()
 
 void start_key_press_handler()
 {
-	if( motor1.current_pulse >=  motor1.expect_pulse ){
+	if( g_config.config_avaliable == 2 )
+	{
+			config_save();
+	}
+	
+	
+	if( motor1.current_pulse >=  motor1.expect_pulse  && motor2.current_pulse >=  motor2.expect_pulse ){
 		_LOG("start motor1 speed=%d, round=%d\n", g_config.motor1_speed , g_config.motor1_circle_count * ONE_ROUND_FREQ );
-		motor_start( &motor1, g_config.motor1_speed , g_config.motor1_circle_count * ONE_ROUND_FREQ );
+		motor_start( &motor1, g_config.motor1_speed * ONE_ROUND_FREQ /60 , g_config.motor1_circle_count * ONE_ROUND_FREQ );
+		_LOG("start motor2 speed=%d, round=%d\n", g_config.motor2_speed , g_config.motor2_circle_count * ONE_ROUND_FREQ );
+		motor_start( &motor2, g_config.motor2_speed * ONE_ROUND_FREQ /60 , g_config.motor2_circle_count * ONE_ROUND_FREQ );
 	}else{ 
 		_LOG("stop motor1\n");
 		motor_stop( &motor1 );
+		_LOG("stop motor2\n");
+		motor_stop( &motor2 );
 	}
+	/*
+	if( motor2.current_pulse >=  motor2.expect_pulse ){
+		_LOG("start motor2 speed=%d, round=%d\n", g_config.motor2_speed , g_config.motor2_circle_count * ONE_ROUND_FREQ );
+		motor_start( &motor2, g_config.motor2_speed * ONE_ROUND_FREQ /60 , g_config.motor2_circle_count * ONE_ROUND_FREQ );
+	}else{ 
+		_LOG("stop motor2\n");
+		motor_stop( &motor2 );
+	}
+	*/
 }
 
 void switch_key_press_handler()
 {
 	current_point++;
 	current_point %= 4;
+	lcd_update_mouse();
+
 }
 
 
@@ -729,8 +830,8 @@ void switcher_interval_check(volatile  struct switcher *sw )
 
 void switch_init()
 {
-	switcher_init( &round_add_key, 1 , 0 , GPIOA, GPIO_Pin_4, round_add_key_toggle_handler , NULL);
-	switcher_init( &round_reduce_key, 1, 0 , GPIOA, GPIO_Pin_5 , round_reduce_key_toggle_handler, NULL);
+	switcher_init( &round_add_key, 1 , 0 , GPIOA, GPIO_Pin_5, round_add_key_toggle_handler , NULL);
+	switcher_init( &round_reduce_key, 1, 0 , GPIOA, GPIO_Pin_4 , round_reduce_key_toggle_handler, NULL);
 	switcher_init( &start_key , 1, 0 , GPIOB, GPIO_Pin_0, start_key_press_handler ,NULL);
 	switcher_init( &switch_key, 1, 0 , GPIOB, GPIO_Pin_1, switch_key_press_handler ,NULL);
 	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
@@ -862,8 +963,65 @@ unsigned short Cali_Adc_Value(int id)
 
 
 
+systick_time_t led_timer;
 
+void heart_led_init()
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_13;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	
+	systick_init_timer(&led_timer, 500);
+	
+}
 
+void heart_led_even()
+{
+	static char led = Bit_RESET;
+	
+	if( systick_check_timer( &led_timer ) ){
+		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
+		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
+	}
+}
+
+void cmd_even()
+{
+	static char buffer[4]={0};
+	static char index = 0;
+	
+	if( Uart_Get( CONSOLE_UART , &buffer[index], 1 ) ){
+		if( buffer[index] == '\n' ){
+			if( index == 1 ){
+				switch( buffer[index -1 ]){
+					case '+':
+						_LOG("add \n");
+						round_add_key_toggle_handler();
+					break;
+					case '-':
+						_LOG("reduce \n");
+						round_reduce_key_toggle_handler();
+					break;
+					case 's':
+						_LOG("start \n");
+						start_key_press_handler();
+					break;
+					case 'w':
+						_LOG("switch \n");
+						switch_key_press_handler();
+					break;
+				}
+			}
+			index = 0;
+			return;
+		}
+		index++;
+		index = index % 4;
+	}
+}
 
 void app_init()
 {
@@ -872,6 +1030,8 @@ void app_init()
 	motor_init();
 	lcd_init();
 	switch_init();
+	
+	heart_led_init();
 }
 
 
@@ -879,5 +1039,9 @@ void app_event()
 {
 	motor_loop();
 	switch_even();
+	heart_led_even();
+	cmd_even();
+	
+	config_auto_save_even();
 }
 
