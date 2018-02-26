@@ -433,13 +433,138 @@ void switch_det_event()
 
 
 
+
+
+
+
+
+
+
+
+
+
+#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
+  #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
+#else
+  #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
+#endif
+#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
+#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
+
+// the size of struct config should be n*4Byte
+struct config {
+	int config_avaliable;
+	float current_max;
+	float current_min;
+	int db_max;
+	int db_min;
+};
+volatile struct config g_config;
+
+
+void config_read()
+{
+	volatile int * p;
+	__IO int* addr;
+	int i, int_count;
+	
+	addr = (__IO int*) CONFIG_ADDRESS;
+	int_count = sizeof( struct config )/sizeof( int );	
+	p = (volatile int*)&g_config;
+	for( i=0; i< int_count  ; i++ ){
+		*(p+i) = *(__IO int*) addr;
+		addr++;
+	}
+	
+}
+
+int config_save()
+{
+	int timeout, i, res;
+	volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
+	volatile int * data = (volatile int *) &g_config;
+	int addr = CONFIG_ADDRESS;
+	int int_count = sizeof( struct config )/sizeof( int );
+	
+	g_config.config_avaliable = 1;
+		
+	FLASHStatus = FLASH_COMPLETE;
+	FLASH_Unlock();
+	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
+	
+	res = 0;
+	timeout = 10;
+	while( timeout-- > 0)
+	{
+		FLASHStatus = FLASH_ErasePage(addr);
+		if( FLASHStatus == FLASH_COMPLETE ){
+			res = 1;
+			break;
+		}
+	}
+	
+	if( res == 1 )
+	{
+		for ( i = 0; i< int_count ; i++ )
+		{
+			res = 0;
+			timeout = 10;
+			while( timeout-- > 0)
+			{
+				FLASHStatus = FLASH_ProgramWord( addr+4*i, *(data+i) ) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
+				if( FLASHStatus == FLASH_COMPLETE ){
+					res = 1;
+					break;
+				}
+			}
+			if( res == 0 ) break;
+		}
+	}
+
+	FLASH_Lock();
+	
+	return res;
+}
+
+
+void config_init()
+{
+	//if no this setting , flash will very slow
+	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
+	g_config.config_avaliable = 0;
+	config_read();
+	if( g_config.config_avaliable != 1 ){
+		// never init
+		g_config.config_avaliable = 1;
+		g_config.current_max = 0.5 ; //A
+		g_config.current_min = 0.35 ; //A
+		g_config.db_max = 65;
+		g_config.db_min = 30;
+		config_save();
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 // packget  head tag 
 #define USER_DATA_TAG	1
 #define USER_LOG_TAG	2
 #define USER_START_TAG	3
+#define USER_CONFIG_TAG	4
 #define USER_CMD_CHMOD_TAG 4
 #define USER_CMD_CURRENT_MAXMIN_TAG 5
 #define USER_CMD_VOICE_MAXMIN_TAG 6
+#define USER_CMD_GET_MAXMIN_TAG 7
 
 //packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
@@ -456,10 +581,6 @@ Uart_t *userUart=NULL;
 protocol_t encoder;
 protocol_t decoder;
 volatile unsigned char userStation_mode;
-float MAX_ALARM_CURRENT_VALUE = 0.5; //A
-float MIN_ALARM_CURRENT_VALUE = 0.4; //A
-int MAX_ALARM_VOICE_VALUE = 65 ;  //db
-int MIN_ALARM_VOICE_VALUE = 20 ;  //db
 
 void userStation_init()
 {
@@ -480,6 +601,20 @@ int userStation_send( unsigned char *data , int len)
 	}
 }
 
+void userStation_log( char * str ){
+	unsigned char buffer[ 32 ];
+	
+	if( strlen( str ) > 30 )
+		return;
+	
+	buffer[0] = USER_LOG_TAG;
+	memcpy( &buffer[1], str , strlen(str) );
+	
+	if( 0 == userStation_send( buffer, strlen(str)+1 ) ){
+		_LOG("userStation_log: encode false");
+	}
+	
+}
 
 
 void userStation_report(int db, float current, int work_counter, int error)
@@ -497,25 +632,30 @@ void userStation_report(int db, float current, int work_counter, int error)
 
 	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
 		_LOG("userStation_report: report false\n");
+		userStation_log("userStation_report: report false\n");
 	}
 	
 	_LOG("report: db=%d, current=%f , count=%d, error=%d\n", db, current, work_counter ,error);
 }
 
-void userStation_log( char * str ){
-	unsigned char buffer[ 32 ];
+void userStation_send_config()
+{
+	unsigned char buffer[18];
 	
-	if( strlen( str ) > 30 )
-		return;
+	buffer[0]= USER_CONFIG_TAG;
+	buffer[1] = g_config.config_avaliable; // 1 available
+	memcpy( &buffer[2], (unsigned char*) &g_config.current_max, 4 ) ;
+	memcpy( &buffer[6], (unsigned char*) &g_config.current_min , 4 ); 
+	memcpy( &buffer[10], (unsigned char*) &g_config.db_max, 4 ) ;
+	memcpy( &buffer[14], (unsigned char*) &g_config.db_min , 4 ); 
 	
-	buffer[0] = USER_LOG_TAG;
-	memcpy( &buffer[1], str , strlen(str) );
-	
-	if( 0 == userStation_send( buffer, strlen(str)+1 ) ){
-		_LOG("userStation_log: encode false");
+	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
+		_LOG("send config false\n");
+		userStation_log("send config false\n");
 	}
 	
 }
+
 
 
 void userStation_handleMsg( unsigned char *data, int len)
@@ -535,10 +675,11 @@ void userStation_handleMsg( unsigned char *data, int len)
 			if( len == 9 ){
 				memcpy( (char*)&cmax, data+1, 4);
 				memcpy( (char*)&cmin, data+5, 4);
-				MAX_ALARM_CURRENT_VALUE = cmax;
-				MIN_ALARM_CURRENT_VALUE = cmin;
-				_LOG("set current max = %f\n", cmax);
-				sprintf((char*)buffer,"current=[%f,%f]",cmin, cmax);
+				g_config.current_max = cmax;
+				g_config.current_min = cmin;
+				config_save();
+				userStation_send_config();
+				sprintf((char*)buffer,"current=[%fA,%fA]",g_config.current_min, g_config.current_max);
 				userStation_log( (char*) buffer );
 			}
 			break;
@@ -547,12 +688,17 @@ void userStation_handleMsg( unsigned char *data, int len)
 			if( len == 9 ){
 				memcpy( (char*)&dbmax, data+1, 4);
 				memcpy( (char*)&dbmin, data+5, 4);
-				MAX_ALARM_VOICE_VALUE = dbmax;
-				MIN_ALARM_VOICE_VALUE = dbmin;
-				_LOG("set db max = %d\n", dbmax);
-				sprintf((char*)buffer,"db=[%d,%d]",dbmin, dbmax);
+				g_config.db_max = dbmax;
+				g_config.db_min = dbmin;
+				config_save();
+				userStation_send_config();
+				sprintf((char*)buffer,"db=[%d,%d]",g_config.db_min, g_config.db_max);
 				userStation_log( (char*) buffer );
 			}
+			break;
+			
+		case USER_CMD_GET_MAXMIN_TAG:
+			userStation_send_config();
 			break;
 		
 		default:
@@ -590,8 +736,8 @@ void userStation_listen_even()
 Uart_t *victor8165Uart;
 
 #define VICTOR8165_BUFFSIZE 32
-unsigned char victor8165_buf[VICTOR8165_BUFFSIZE];
-unsigned char victor8165_inited = 0;
+volatile unsigned char victor8165_buf[VICTOR8165_BUFFSIZE];
+volatile unsigned char victor8165_inited = 0;
 systick_time_t victor8165_cmd_timer;
 
 int victor8165_cmd( char * cmd  )
@@ -602,6 +748,7 @@ int victor8165_cmd( char * cmd  )
 		systick_delay_us(500);
 	}
 	Uart_Clear_Rx( victor8165Uart );
+	//while( 1 == Uart_Get( victor8165Uart, &victor8165_buf[0] , 1) );
 	
 	i = strlen(cmd);
 	Uart_Put_Sync( victor8165Uart, (unsigned char *)cmd, i );
@@ -611,10 +758,11 @@ int victor8165_cmd( char * cmd  )
 	count = 0;
 	len = 0;
 	for( i=0; i< 500 ; i++ ){
-		count = Uart_Get( victor8165Uart, &victor8165_buf[len] , VICTOR8165_BUFFSIZE - len);
+		count = Uart_Get( victor8165Uart, &victor8165_buf[len] , VICTOR8165_BUFFSIZE - len -1);
 		len += count;
 		if( len > 0 && victor8165_buf[len-1]==0x0A ){
 			//systick_delay_us(50000);
+			victor8165_buf[len]= 0;
 			systick_init_timer( &victor8165_cmd_timer , 10); // next cmd need to wait 50ms
 			return len;
 		}
@@ -633,11 +781,30 @@ int victor8165_cmd( char * cmd  )
 int victor8165_check(const char* cmd, const char *result)
 {
 	int len;
+	int i;
 	
 	len = victor8165_cmd( (char*) cmd);
-	if( len == strlen(result) && 0 == strncmp(result,(const char*) victor8165_buf, len ) ){
+	if( len == strlen(result) && 0 == strncmp(result,(char*) victor8165_buf , len) ){
 		return 1;
 	}
+	
+	/*
+	for( i=0; i< len; i++ ){
+		
+		if( result[i] != victor8165_buf[i] ){
+			userStation_log( "x,");
+			return 0;
+		}else{
+			userStation_log( "1,");
+		}
+	}
+	
+	return 1;
+	*/
+	
+	userStation_log( "check :\n");
+	userStation_log((char*)cmd);
+	userStation_log((char*)victor8165_buf);
 	return 0;
 }
 
@@ -712,8 +879,9 @@ int victor8165_getCurrent( float *A)
 {
 	int retry, len;
 	
-	
-	if( victor8165_inited == 0 ||  0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
+	//victor8165_check( "FUNC1?\n", "ADC\n");
+	//if( victor8165_inited == 0 ||  0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
+	if( victor8165_inited == 0 ){
 		_LOG("victor8165_getCurrent: need to init\n");
 		victor8165_inited = 0;
 		victor8165_init();
@@ -750,7 +918,7 @@ int victor8165_getCurrent( float *A)
 
 
 
-#define CALI_DATA_COUNT 10
+#define CALI_DATA_COUNT 50
 systick_time_t led_timer;
 systick_time_t collect_1s_timer;
 systick_time_t work_timer;
@@ -781,6 +949,7 @@ void server_start()
 	
 	tag = USER_START_TAG;	
 	userStation_send( &tag , 1 );
+	userStation_send_config();
 	
 	//set led status
 	led_on(LED_STATUS_ID);
@@ -788,6 +957,12 @@ void server_start()
 	led_off(LED_PASS_ID);
 	led_off(LED_VOICE_ERROR_ID);
 	led_off(LED_CURRENT_ERROR_ID);
+	
+	if( 0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
+		_LOG("victor8165_getCurrent: need to init\n");
+		victor8165_inited = 0;
+		victor8165_init();
+	}
 }
 
 void server_stop()
@@ -809,7 +984,7 @@ void server_stop()
 	
 	
 	//TODO set led status
-	if( work_counter> 0 &&  current < MAX_ALARM_CURRENT_VALUE  && current > MIN_ALARM_CURRENT_VALUE && db < MAX_ALARM_VOICE_VALUE){
+	if( work_counter> 0 &&  current < g_config.current_max  && current > g_config.current_min && db < g_config.db_max){
 		led_on(LED_PASS_ID);
 		led_off(LED_VOICE_ERROR_ID);
 		led_off(LED_CURRENT_ERROR_ID);
@@ -819,11 +994,11 @@ void server_stop()
 		led_off(LED_PASS_ID);
 		if( work_counter > 0 ){
 			error = 0;
-			if( current >= MAX_ALARM_CURRENT_VALUE || current <= MIN_ALARM_CURRENT_VALUE ){
+			if( current >= g_config.current_max || current <= g_config.current_min ){
 				error |= USER_RES_CURRENT_FALSE_FLAG;
 				led_on(LED_CURRENT_ERROR_ID);
 			}
-			if( db >= MAX_ALARM_VOICE_VALUE ){
+			if( db >= g_config.db_max ){
 				error |= USER_RES_VOICE_FALSE_FLAG;
 				led_on(LED_VOICE_ERROR_ID);
 			}
@@ -834,6 +1009,9 @@ void server_stop()
 		}
 	}
 	
+	
+	victor8165_cmd( "ADC\n");
+	victor8165_check( "FUNC1?\n", "ADC\n");
 	
 	//update status
 	led_off(LED_STATUS_ID);
@@ -874,7 +1052,7 @@ void server_runtime()
 		userStation_log("read adc false");
 		res = 0;
 	}
-	if( db_array[work_counter] < MIN_ALARM_VOICE_VALUE ){
+	if( db_array[work_counter] < g_config.db_min ){
 		_LOG("error: read Noise too low , check connection \n");
 		userStation_log("error: Noise too low");
 		res = 0;
@@ -888,7 +1066,7 @@ void server_runtime()
 	}
 	
 	//will run this func after 100ms
-	systick_init_timer( &work_timer, 600);
+	systick_init_timer( &work_timer, 20);
 }
 
 void server_event()
@@ -938,6 +1116,8 @@ void app_init()
 	switch_det_config();
 	userStation_init();
 	server_init();
+	
+	config_init();
 }
 
 
