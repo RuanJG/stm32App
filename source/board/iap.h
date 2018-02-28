@@ -43,13 +43,11 @@
 // app firmware adress :0x8000000 + + 0x1c00+ FLASH_PAGE_SIZE =  0x8002000		size = (0x10000 - 0x2000) = 0xE000	//56k
 
 
-
-
-// app flash in 0x8002400 0xDC00 (IAP_FLASH_SIZE-0x2400 = 0x10000-0x2400)
-// iap flash in 0x8000000 0x2400 ( iap 0x2000 + tag 0x400 )
+// iap flash in 0x8000000 0x3C00 ( iap  + tag 0x400 )
+// app flash in 0x8003C00 0xC400 (IAP_FLASH_SIZE - IAP)
 #define IAP_FLASH_SIZE (0x10000) // you can get this value in 'Target Option' , when you choose your stm32 ic
 #define IAP_FIRMWARE_ADRESS (0x8000000)
-#define IAP_FIRMWARE_SIZE 0x2000 //8kB      //0x1C00=7kB
+#define IAP_FIRMWARE_SIZE 0x3800 //9kB
 #define IAP_TAG_ADDRESS (IAP_FIRMWARE_ADRESS+IAP_FIRMWARE_SIZE)
 #define IAP_TAG_UPDATE_VALUE 0xAB
 #define IAP_APP_ADDRESS (IAP_TAG_ADDRESS + FLASH_PAGE_SIZE)
@@ -58,11 +56,13 @@
 
 
 
+
 void iap_config_vect_table(void);
 void iap_can_receive_handler(unsigned char c );
 void iap_init_in_can1(void);
 void iap_init_in_uart(Uart_t *uart);
-
+void iap_init_in_usb();
+void iap_usb_receive_handler(unsigned char c);
 
 
 

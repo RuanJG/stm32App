@@ -3,7 +3,8 @@
 #include "iap.h"
 #include "uart.h"
 #include "can1.h"
-
+#include "hw_config.h"
+#include "systick.h"
 
 
 //program step tag
@@ -128,13 +129,17 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 	//TODO
 	if( iap_port_type ==1 )
 	{//use uart
-		for( i=0 ; i< iap_encoder.len; i++ )
-			Uart_Put(iapUart, &iap_encoder.data[i], 1);
+		Uart_Put(iapUart, iap_encoder.data, iap_encoder.len);
 	}
 	
 	if( iap_port_type == 2 )
 	{//use can1
 		Can1_Send(0x10,iap_encoder.data,iap_encoder.len);
+	}
+	
+	if( iap_port_type == 3 )
+	{
+		USB_TxWrite_Sync(iap_encoder.data, iap_encoder.len);
 	}
 	
 }
@@ -146,6 +151,15 @@ void answer_ack_false(char error)
 	unsigned char data[4];
 	data[0] = PACKGET_ACK_ID;
 	data[1] = PACKGET_ACK_FALSE;
+	data[2] = error;
+	iap_send_packget(data , 3);
+}
+
+void answer_ack_restart(char error)
+{
+	unsigned char data[4];
+	data[0] = PACKGET_ACK_ID;
+	data[1] = PACKGET_ACK_RESTART;
 	data[2] = error;
 	iap_send_packget(data , 3);
 }
@@ -173,6 +187,11 @@ void jump_by_reset()
 void iap_jump()
 {
 		if(1== set_iap_tag(IAP_TAG_UPDATE_VALUE) ){
+				#if IAP_PORT_USB
+				answer_ack_restart(0); // ask for iapApplication reOpen uart 
+				systick_delay_us(5000);
+				USB_Deinit();
+				#endif
 				jump_by_reset();
 		}else{
 				answer_ack_false(PACKGET_ACK_FALSE_PROGRAM_ERROR);
@@ -231,6 +250,20 @@ void iap_init_in_uart(Uart_t *uart)
 
 
 
+//************************************************  usb interface
+void iap_usb_receive_handler(unsigned char c)
+{
+	iap_parase(c);
+}
+
+
+void iap_init_in_usb()
+{
+	protocol_init( &iap_decoder );
+	protocol_init( &iap_encoder );
+	
+	iap_port_type = 3;
+}
 
 
 

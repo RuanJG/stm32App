@@ -205,10 +205,12 @@ void CAN_Interrupt (void)
 }
 
 
+#if BOARD_USING_CAN1
 
 void USB_LP_CAN1_RX0_IRQHandler (void)
 {
 	CAN_Interrupt ();
 	CAN_ClearITPendingBit (CAN1, CAN_IT_FMP0); 
-
 }
+
+#endif

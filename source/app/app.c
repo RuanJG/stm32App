@@ -7,6 +7,8 @@
 #include "iap.h"
 #include "pwm.h"
 #include "LCD1602.h"
+#include "hw_config.h"
+
 
 #define _LOG(X...) if( 1 ) printf(X);
 
@@ -81,9 +83,7 @@ void Uart_init()
 	//swd
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
-	Uart_config_console( CONSOLE_UART );
-	if( BOARD_HAS_IAP )
-		iap_init_in_uart( IAP_UART );
+
 
 }
 
@@ -142,12 +142,12 @@ systick_time_t motor_timer;
 
 void motor_set_direct(volatile struct motor *motorx , unsigned char direction) 
 {
-	GPIO_WriteBit( motorx->dGPIOx , motorx->dGPIO_pin, direction);
+	GPIO_WriteBit( motorx->dGPIOx , motorx->dGPIO_pin, (BitAction) direction);
 }
 
 void motor_en(volatile struct motor *motorx , unsigned char en)
 {
-	GPIO_WriteBit( motorx->eGPIOx , motorx->eGPIO_pin, en);
+	GPIO_WriteBit( motorx->eGPIOx , motorx->eGPIO_pin, (BitAction) en);
 }
 
 
@@ -291,7 +291,6 @@ void motor_rate_check_even( volatile struct motor *motorx )
 
 void motor_init()
 {
-	GPIO_InitTypeDef GPIO_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
 	
 	motor1.id = MOTOR1_ID;
@@ -603,7 +602,7 @@ void lcd_update_mouse()
 
 void lcd_init()
 {
-	int i,x,y;
+	int x,y;
 	LCD1602_Init();
 	
 	for( x=0; x<2 ; x++){
@@ -745,13 +744,15 @@ void switch_key_press_handler()
 #define SW_INTERVAL_MS 5
 systick_time_t sw_timer;
 
+typedef void (*SwitchHandler) (void);
+
 struct switcher {
 	unsigned char state ; // default level :0/1
 	unsigned char press_level; // 0/1
 	GPIO_TypeDef* GPIOx;
 	uint16_t GPIO_Pin;
-	void (*press_handler)();
-	void (*release_handler)();
+	SwitchHandler press_handler;
+	SwitchHandler release_handler;
 
 	unsigned short counter;
 	unsigned short sum;
@@ -760,7 +761,7 @@ struct switcher {
 volatile struct switcher round_add_key,round_reduce_key,start_key,switch_key;
 
 
-void switcher_init(volatile  struct switcher* sw, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , void *press_handler() , void *release_handler()   )
+void switcher_init(volatile  struct switcher* sw, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   )
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
@@ -980,7 +981,7 @@ void heart_led_init()
 
 void heart_led_even()
 {
-	static char led = Bit_RESET;
+	static BitAction led = Bit_RESET;
 	
 	if( systick_check_timer( &led_timer ) ){
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
@@ -993,7 +994,7 @@ void cmd_even()
 	static char buffer[4]={0};
 	static char index = 0;
 	
-	if( Uart_Get( CONSOLE_UART , &buffer[index], 1 ) ){
+	if( Uart_Get( CONSOLE_UART , (unsigned char*) &buffer[index], 1 ) ){
 		if( buffer[index] == '\n' ){
 			if( index == 1 ){
 				switch( buffer[index -1 ]){
@@ -1023,9 +1024,24 @@ void cmd_even()
 	}
 }
 
+
+
+
+
+
 void app_init()
 {
 	Uart_init();
+
+#if BOARD_HAS_IAP
+	if( IAP_PORT_USB == 1 ) iap_init_in_usb();
+	else if( IAP_PORT_CAN1 == 1 )iap_init_in_can1();
+	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
+#endif
+
+	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
+	console_init( CONSOLE_USB_TYPE ,NULL );
+	
 	config_init();
 	motor_init();
 	lcd_init();

@@ -37,13 +37,19 @@
 //check config in  "iap.h"
 
 #define BOARD_HAS_IAP  1
-#define IAP_PORT_UART  1
+#define IAP_PORT_UART  0
 #define IAP_PORT_CAN1  0  // not support now
+#define IAP_PORT_USB   1
 
 
 
 
+//**********************************************************  config using usb/can1
+#define BOARD_USING_USB 1
+#define BOARD_USING_CAN1 0
 
+#define USB_COM_RX_BUF_SIZE       512			//  (1024 + 256)
+#define USB_COM_TX_BUF_SIZE       512			//  (1024 + 256)
 
 
 #endif

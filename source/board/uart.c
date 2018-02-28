@@ -244,27 +244,6 @@ void Uart_Clear_Tx( Uart_t *uart )
 
 
 
-Uart_t *pConsoleUart = NULL;
-
-
-void Uart_config_console( Uart_t* u )
-{
-	//TODO lock ?
-	
-	pConsoleUart = u;
-}
-
-
-
-int fputc(int ch, FILE *f)
-{
-	//TODO lock ?
-	
-	if( pConsoleUart != NULL ){
-		Uart_Put( pConsoleUart, (unsigned char*)&ch, 1);
-	}
-	return (ch);
-}
 
 
 //End of File

@@ -236,7 +236,6 @@ void LCD1602_SetMouse(int x,int y)
 
 void LCD1602_Init(void)
 {
-	int y;
 	
 	LCD1602_GPIO_Init();
 	
