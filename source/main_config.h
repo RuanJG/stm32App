@@ -5,7 +5,8 @@
 #include "bsp.h"
 
 
-
+#define CUSTOM_CAN1_IRQ_PREPRIORITY 2
+#define CUSTOM_CAN1_IRQ_SUBPRIORITY 0
 
 
 //*****************************************************  choose board
@@ -13,12 +14,22 @@
 #define BOARD_NAVIGATION_TYPE 0
 #define BOARD_MONITOR_TYPE 0
 
-#define BOARD_TREX_TYPE 1
+#define BOARD_TREX_TYPE 0
 
 
 
-
-
+#define UARTDEV		 	USART1
+#define UART_TX_GPIO 	GPIOA
+#define UART_TX_PIN 	GPIO_Pin_9
+#define UART_RX_GPIO 	GPIOA
+#define UART_RX_PIN 	GPIO_Pin_10
+#define UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
+#define UART_BAUDRATE	57600
+#define CAN1_ID			0x11
+#define DEF_MAIN_CONTROLLER_CAN1_ID 0X0
+#define IAP_PORT_UART 0
+#define IAP_PORT_CAN1 0
+#define IAP_PORT_USB 1
 
 
 

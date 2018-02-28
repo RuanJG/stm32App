@@ -20,24 +20,7 @@ int Uart_getChar(unsigned char * data);
 void uart_receive_event(unsigned char c);
 
 
-/*
-************* systick 
-*/
-// base funtion after run SysTick_Configuration()
-void systick_init(void);
-void systick_deinit(void);
-void systick_delay_us(u32 us);
-
-//if run systick_event in hight freq loop , can use these functions
-void systick_event(void);
-typedef struct _systick_time_t {
-	u32 systick_ms;
-	u32 systick_ms_overflow;
-	u32 interval_ms;
-}systick_time_t;
-u32 systick_get_ms(void);
-int systick_check_timer(systick_time_t *time_t);
-int systick_init_timer(systick_time_t *time_t, int ms);
+#include "systick.h"
 
 
 

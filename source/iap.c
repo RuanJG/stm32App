@@ -211,7 +211,21 @@ void iap_jump_to_app()
 }
 
 
-
+int iap_receive_data(unsigned char * data, int size)
+{
+#if IAP_PORT_UART
+	return Uart_get(data,size);
+#endif
+	
+#if IAP_PORT_CAN1 
+	return  Can1_get(data,size);
+#endif
+	
+#if IAP_PORT_USB 
+	return USB_RxRead(data, size);
+#endif
+	
+}
 
 
 void iap_send_packget( unsigned char *data , unsigned int size)
@@ -223,6 +237,10 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 #endif
 #if  IAP_PORT_CAN1
 		Can1_Send(encoder.data, encoder.len);
+#endif
+	
+#if IAP_PORT_USB 
+	USB_TxWrite(encoder.data, encoder.len);
 #endif
 	
 }
@@ -504,23 +522,12 @@ void iap_loop()
 {
 	int i, count;
 	//check iap_lost_ms, it will be fill 0 in can1 or uart receive event
-
-#if IAP_PORT_UART
 	
-	count = Uart_get(uartRxBuffer,UART_RX_BUFFER_SIZE);
+	count = iap_receive_data(uartRxBuffer,UART_RX_BUFFER_SIZE);
 	for(i=0; i< count ; i++)
 		iap_parase(uartRxBuffer[i]);
-#endif
 	
-	
-#if IAP_PORT_CAN1 
-	
-	count = Can1_get(can1RxBuffer,CAN_RX_BUFFER_SIZE);
-	for(i=0; i< count ; i++)
-		iap_parase(can1RxBuffer[i]);
-	
-#endif
-	
+	//if( count > 0 ) USB_TxWrite(uartRxBuffer, count);
 	
 	if( systick_check_timer( &timeout_timer ) == 1)
 	{

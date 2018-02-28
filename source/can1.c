@@ -201,6 +201,7 @@ void CAN_Interrupt (void)
 }
 
 
+#if IAP_PORT_CAN1
 
 void USB_LP_CAN1_RX0_IRQHandler (void)
 {
@@ -208,3 +209,5 @@ void USB_LP_CAN1_RX0_IRQHandler (void)
 	CAN_ClearITPendingBit (CAN1, CAN_IT_FMP0); 
 
 }
+
+#endif

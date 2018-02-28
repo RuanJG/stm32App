@@ -1,6 +1,6 @@
 #include "stm32f10x_conf.h"
 #include "main_config.h"
-
+#include "hw_config.h"
 
 
 void gpio_init()
@@ -87,6 +87,10 @@ void bsp_init()
 
 	if ( 1== IAP_PORT_CAN1 )
 		can1_init();
+	
+	if( 1 == IAP_PORT_USB ){
+		USB_Config();
+	}
 
 }
 
@@ -103,5 +107,9 @@ void bsp_deinit()
 		CAN_DeInit(CAN1);
 	if( 1 == IAP_PORT_UART)
 		USART_Cmd(UARTDEV, DISABLE);	
+	
+	if( 1 == IAP_PORT_USB ){
+		USB_Deinit();
+	}
 	systick_deinit();
 }
