@@ -30,7 +30,10 @@
 #define IAP_PORT_UART 0
 #define IAP_PORT_CAN1 0
 #define IAP_PORT_USB 1
-
+#define IAP_GPIO_DETECTION 1
+#define IAP_GPIO GPIOB
+#define IAP_GPIO_PIN GPIO_Pin_1
+#define IAP_GPIO_LEVEL 0
 
 
 //****************************************************¡¡config board pin

@@ -172,13 +172,6 @@ void iap_reset()
 	while(1);
 }
 
-void iap_jump_to_app_after_flash()
-{
-	bsp_deinit();
-	if( is_iap_tag_set() )
-		clean_iap_tag();
-	iap_reset();
-}
 
 typedef void(*iapFunction)(void);
 void iap_jump_to_app()
@@ -190,15 +183,15 @@ void iap_jump_to_app()
 	if( is_iap_tag_set() )
 		clean_iap_tag();
 	
+	bsp_deinit();
+	
 	// if flash has programed , reset 
 	if( iap_has_flashed_data == 1 )
-		iap_jump_to_app_after_flash();
-	
+		iap_reset();
 	
 	/* If Program has been written */
 	if ( is_app_flashed())
 	{	
-		bsp_deinit();
 		// Set system control register SCR->VTOR , and the app need to set vector too 
 		//NVIC_SetVectorTable(NVIC_VectTab_FLASH, (IAP_APP_ADDRESS-IAP_FIRMWARE_ADRESS));
 		//jump
@@ -210,6 +203,23 @@ void iap_jump_to_app()
 	
 }
 
+
+void iap_jump_to_app_or_deamon()
+{
+	iapFunction Jump_To_Application;
+	uint32_t JumpAddress;
+
+	if ( is_app_flashed())
+	{	
+		JumpAddress = *(__IO uint32_t*) (IAP_APP_ADDRESS + 4);
+		Jump_To_Application = (iapFunction) JumpAddress;
+		__set_MSP(*(__IO uint32_t*) IAP_APP_ADDRESS);
+		Jump_To_Application(); 
+	}else{
+		while(1);
+	}
+	
+}
 
 int iap_receive_data(unsigned char * data, int size)
 {
@@ -501,6 +511,7 @@ void can1_receive_event(CanRxMsg *msg)
 
 void iap_init()
 {
+	
 	protocol_init(&encoder);
 	protocol_init(&decoder);
 	
@@ -508,12 +519,8 @@ void iap_init()
 	
 	iap_inited_flag = 1;
 	
-	if( is_iap_tag_set() )
-	{
-		_iap_lost_ms_max = 60*1000 ;
-	}else{
-		_iap_lost_ms_max = 300;
-	}
+	_iap_lost_ms_max = 60*1000 ;
+	
 }
 
 

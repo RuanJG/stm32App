@@ -49,7 +49,7 @@
 
 #define IAP_FLASH_SIZE (0x10000) // you can get this value in 'Target Option' , when you choose your stm32 ic
 #define IAP_FIRMWARE_ADRESS (0x8000000)
-#define IAP_FIRMWARE_SIZE 0x3800 //9kB
+#define IAP_FIRMWARE_SIZE 0x3800 //14kB
 #define IAP_TAG_ADDRESS (IAP_FIRMWARE_ADRESS+IAP_FIRMWARE_SIZE)
 #define IAP_TAG_UPDATE_VALUE 0xAB
 #define IAP_APP_ADDRESS (IAP_TAG_ADDRESS + FLASH_PAGE_SIZE)
@@ -66,7 +66,9 @@ void iap_init(void);
 
 void iap_loop(void);
 
+void iap_jump_to_app_or_deamon();
 
+int is_iap_tag_set();
 
 
 

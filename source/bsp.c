@@ -70,6 +70,32 @@ void toggle_pin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 
 
 
+int iap_first_check()
+{
+#if IAP_GPIO_DETECTION
+	GPIO_InitTypeDef GPIO_InitStructure;
+	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
+	
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = IAP_GPIO_PIN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(IAP_GPIO, &GPIO_InitStructure);
+	
+	if( IAP_GPIO_LEVEL == GPIO_ReadInputDataBit( IAP_GPIO, IAP_GPIO_PIN) )
+		return 1;
+#endif 
+	
+	if( is_iap_tag_set() )
+		return 1;
+		
+	return 0;
+	
+}
+
 
 void bsp_init()
 {
@@ -77,6 +103,9 @@ void bsp_init()
 	
 	//if no this setting , flash will very slow
 	FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
+	
+	if( 0 ==  iap_first_check() )
+		iap_jump_to_app_or_deamon();
 	
 	gpio_init();
 	
