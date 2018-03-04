@@ -171,9 +171,15 @@ void USB_Interrupts_Config(void)
 *******************************************************************************/
 void USB_Cable_Config (FunctionalState NewState)
 {
+	GPIO_InitTypeDef GPIO_InitStructure;
   if (NewState == DISABLE)
   {
     //GPIO_ResetBits(USB_DISCONNECT, USB_DISCONNECT_PIN);
+		GPIO_InitStructure.GPIO_Pin=GPIO_Pin_12;
+		GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+		GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
+		GPIO_Init(GPIOA, &GPIO_InitStructure);
+		GPIO_WriteBit(GPIOA,GPIO_Pin_12, Bit_RESET);
   }
   else
   {
@@ -236,7 +242,7 @@ void USB_Deinit(void)
 	
 	
 	PowerOff();
-	systick_delay_us(10000);
+	systick_delay_us(5000);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USB, DISABLE);
 }
 

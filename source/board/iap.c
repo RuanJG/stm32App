@@ -189,7 +189,7 @@ void iap_jump()
 		if(1== set_iap_tag(IAP_TAG_UPDATE_VALUE) ){
 				#if IAP_PORT_USB
 				answer_ack_restart(0); // ask for iapApplication reOpen uart 
-				systick_delay_us(5000);
+				systick_delay_us(50000);
 				USB_Deinit();
 				#endif
 				jump_by_reset();

@@ -27,7 +27,9 @@ int fputc(int ch, FILE *f)
 	
 	if( console_type == CONSOLE_UART_TYPE && pConsoleUart != NULL ){
 		Uart_Put( pConsoleUart, (unsigned char*)&ch, 1);
-	}else if( console_type == CONSOLE_USB_TYPE ){
+	}
+	
+	if( console_type == CONSOLE_USB_TYPE ){
 		USB_TxWrite( (unsigned char*)&ch, 1);
 	}
 	return (ch);

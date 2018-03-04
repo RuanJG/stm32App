@@ -105,7 +105,7 @@ void Uart_init()
 #define MOTOR2_ID 2
 #define MOTOR_DIRECTION_RIGHT Bit_SET
 #define MOTOR_DIRECTION_LEFT Bit_RESET
-#define MOTOR_EN_ON Bit_SET
+#define MOTOR_EN_ON  Bit_SET
 #define MOTOR_EN_OFF Bit_RESET
 
 struct motor {
@@ -154,11 +154,19 @@ void motor_en(volatile struct motor *motorx , unsigned char en)
 int motor_rate(volatile struct motor *motorx, unsigned short freq)
 {
 	unsigned short period;
+	GPIO_InitTypeDef GPIO_InitStructure;
 	
 	if( freq < LIMIT_MIN_FREQ ){
 		// stop 
 		motor_en( motorx, MOTOR_EN_OFF);
 		TIM_Cmd(motorx->timer, DISABLE);
+		#if 0
+		GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
+		GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+		GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
+		GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
+		GPIO_WriteBit(motorx->pGPIOx,motorx->pGPIO_pin, Bit_RESET);
+		#endif
 		//pwm_set( motorx->timer, motorx->channel, 0);
 		_LOG("Motor%d set freq(%d)\n", motorx->id, freq);
 		
@@ -168,6 +176,12 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 		TIM_SetAutoreload( motorx->timer , period );
 		pwm_set(motorx->timer , motorx->channel , period/2);
 		TIM_Cmd(motorx->timer, ENABLE);
+		#if 0
+		GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
+		GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+		GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP ;
+		GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
+		#endif
 		motor_en( motorx, MOTOR_EN_ON);
 		_LOG("Motor%d set freq(%d), start...\n", motorx->id, freq);
 	}else{
@@ -1039,7 +1053,7 @@ void app_init()
 	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
 #endif
 
-	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
+	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
 	console_init( CONSOLE_USB_TYPE ,NULL );
 	
 	config_init();
