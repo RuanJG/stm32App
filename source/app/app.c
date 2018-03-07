@@ -312,6 +312,8 @@ int get_vcc()
 	return Cali_Adc_Value(0);
 }
 
+volatile int start_pwm_check_flag = 0;
+volatile int pwm_check_false_counter = 0;
 volatile int adc_sum,adc_countL,adc_countH, adc_mid;
 volatile int output_pwm_persen = 20;
 systick_time_t pwm_timer;
@@ -330,6 +332,8 @@ void pwm_adc_init()
 	adc_countH = 0;
 	adc_mid = 10; // will change auto
 	output_pwm_persen = 20;
+	start_pwm_check_flag = 0;
+	pwm_check_false_counter = 0;
 	
 	GreenLed_Off();
 }
@@ -337,6 +341,8 @@ void pwm_adc_init()
 void pwm_adc_event()
 {
 	int adc, persen,diff;
+	
+	//if( start_pwm_check_flag == 0 ) return;
 	if( 0 == systick_check_timer( &pwm_timer ) ) return ;
 		
 	adc = get_vcc();
@@ -364,15 +370,23 @@ void pwm_adc_event()
 			_LOG("OK\n");
 			GreenLed_On();
 			RedLed_Off();
+			start_pwm_check_flag = 0;
+			pwm_check_false_counter = 0;
 			output_pwm_persen = 20;
 		}else{
 			output_pwm_persen += 30;
 		}
 	}else{
-		_LOG("NG\n");
-		GreenLed_Off();
-		RedLed_On();
-		output_pwm_persen = 20;
+		
+		pwm_check_false_counter ++;
+		
+		if( pwm_check_false_counter >= 3 ){
+			_LOG("NG\n");
+			GreenLed_Off();
+			RedLed_On();
+			output_pwm_persen = 20;
+			pwm_check_false_counter = 0;
+		}
 		
 		//reset adc_mid
 		change_pwm_persen(100);
@@ -438,34 +452,67 @@ void numberled_toggle()
 {
 	static int step = 0;
 	
-	GPIO_SetBits(GPIOA,GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
-	GPIO_SetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+	GPIO_ResetBits(GPIOA,GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
+	GPIO_ResetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+	GPIO_WriteBit(GPIOA, GPIO_Pin_5,0);
+	GPIO_WriteBit(GPIOB, GPIO_Pin_3,0);
 	switch ( step ){
 		case 0:
-			GPIO_ResetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
-			GPIO_ResetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+			GPIO_SetBits(GPIOB, GPIO_Pin_4);
+			//GPIO_SetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
 			break;
 		case 1:
-			GPIO_ResetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15 );
-			GPIO_ResetBits(GPIOB,GPIO_Pin_15);
+			//GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15 );
+			GPIO_SetBits(GPIOA,GPIO_Pin_6);
 			break;
 		case 2:
 			//GPIO_SetBits(GPIOA,GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4  | GPIO_Pin_6 | GPIO_Pin_8);
-			GPIO_ResetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_4 );
+			GPIO_SetBits(GPIOB, GPIO_Pin_12);
 			break;
 		case 3:
-			GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
-			GPIO_SetBits(GPIOB, GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+			GPIO_SetBits(GPIOA, GPIO_Pin_15);
+			//GPIO_SetBits(GPIOB, GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+			break;
+		case 4:
+			GPIO_SetBits(GPIOA,  GPIO_Pin_8);
+			//GPIO_SetBits(GPIOB, GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+			break;
+		case 5:
+			//GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
+			GPIO_SetBits(GPIOB,GPIO_Pin_14  );
+			break;
+		case 6:
+			//GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
+			GPIO_SetBits(GPIOB, GPIO_Pin_15);
+			break;
+		case 7:
+			//GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
+			GPIO_SetBits(GPIOB, GPIO_Pin_13 );
+			GPIO_WriteBit(GPIOA, GPIO_Pin_5,1);
+			GPIO_WriteBit(GPIOB, GPIO_Pin_3,0);
+			break;
+		case 8:
+			//GPIO_SetBits(GPIOA, GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
+			GPIO_SetBits(GPIOB, GPIO_Pin_13 );
+			GPIO_WriteBit(GPIOA, GPIO_Pin_5,0);
+			GPIO_WriteBit(GPIOB, GPIO_Pin_3,1);
+			break;
+		case 9:
+			GPIO_SetBits(GPIOA,GPIO_Pin_6 | GPIO_Pin_8 | GPIO_Pin_15);
+			GPIO_SetBits(GPIOB,GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_4 );
+			break;
+		case 10:
+			GPIO_WriteBit(GPIOA, GPIO_Pin_5,1);
+			GPIO_WriteBit(GPIOB, GPIO_Pin_3,1);
 			break;
 		default:
 			step = 0;
 			break;
 		
 	}
-	GPIO_WriteBit(GPIOA, GPIO_Pin_5,1);
-	GPIO_WriteBit(GPIOB, GPIO_Pin_3,1);
+
 	step++;
-	step %= 4;
+	step %= 11;
 	
 }
 
@@ -652,6 +699,7 @@ int is_key_press()
 
 
 systick_time_t led_timer;
+systick_time_t led2_timer;
 
 void app_init()
 {
@@ -666,20 +714,28 @@ void app_init()
 	//EXTI_init();
 	
 	// start ui led board display
-	systick_init_timer( &led_timer, 700);
+	systick_init_timer( &led_timer, 400);
+	systick_init_timer( &led2_timer, 400);
 	//numberled_toggle();
 	//GPIO_SetBits(GPIOA,GPIO_Pin_4 |GPIO_Pin_3 |GPIO_Pin_2 |GPIO_Pin_1|GPIO_Pin_0  );
+	
+	switch_det_init();
 }
 
 
 void app_event()
 {
 	if( 1 == systick_check_timer( &led_timer) ){
-		numberled_toggle();
-		
 		barled_toggle();
 	}
+	if( 1 == systick_check_timer( &led2_timer) ){
+		numberled_toggle();
+	}
 
+	switch_det_event();
+	if( switch_is_pressed() )
+		start_pwm_check_flag = 1;
+	
 	pwm_adc_event();
 }
 
