@@ -139,7 +139,8 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 	
 	if( iap_port_type == 3 )
 	{
-		USB_TxWrite_Sync(iap_encoder.data, iap_encoder.len);
+		USB_TxWrite(iap_encoder.data, iap_encoder.len);
+		//USB_TxWrite_Sync(iap_encoder.data, iap_encoder.len);
 	}
 	
 }

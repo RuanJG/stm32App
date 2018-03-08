@@ -10,7 +10,7 @@
 
 
 Uart_t *pConsoleUart = NULL;
-volatile int console_type ;
+volatile int console_type=0 ;
 
 void console_init(int type, void * pridata )
 {
