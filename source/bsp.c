@@ -81,10 +81,11 @@ int iap_first_check()
 	
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = IAP_GPIO_PIN;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(IAP_GPIO, &GPIO_InitStructure);
 	
+	GPIO_ReadInputDataBit( IAP_GPIO, IAP_GPIO_PIN);
 	if( IAP_GPIO_LEVEL == GPIO_ReadInputDataBit( IAP_GPIO, IAP_GPIO_PIN) )
 		return 1;
 #endif 
