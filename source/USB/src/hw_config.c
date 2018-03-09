@@ -35,7 +35,7 @@
 #include "usb_pwr.h"
 #include "fifo.h"
 #include "systick.h"
-
+#include "iap.h"
 
 
 static uint8_t  m_UsbComRxBuf[USB_COM_RX_BUF_SIZE]   ;//   = {0};     

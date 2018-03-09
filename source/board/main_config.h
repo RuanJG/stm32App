@@ -52,4 +52,21 @@
 #define USB_COM_TX_BUF_SIZE       512			//  (1024 + 256)
 
 
+
+
+
+
+
+
+//#####################################################   choose board
+
+#define BOARD_IR_TESTBOARD	0
+#define BOARD_MOTOR 				0
+#define BOARD_QIPAD					1
+#define BOARD_Trex_V2				0
+
+
+
+
+
 #endif

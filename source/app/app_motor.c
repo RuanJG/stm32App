@@ -7,7 +7,7 @@
 #include "iap.h"
 #include "pwm.h"
 #include "LCD1602.h"
-#include "hw_config.h"
+#if BOARD_MOTOR
 
 
 #define _LOG(X...) if( 1 ) printf(X);
@@ -83,8 +83,6 @@ void Uart_init()
 	//swd
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
-
-
 }
 
 
@@ -105,7 +103,7 @@ void Uart_init()
 #define MOTOR2_ID 2
 #define MOTOR_DIRECTION_RIGHT Bit_SET
 #define MOTOR_DIRECTION_LEFT Bit_RESET
-#define MOTOR_EN_ON  Bit_SET
+#define MOTOR_EN_ON Bit_SET
 #define MOTOR_EN_OFF Bit_RESET
 
 struct motor {
@@ -142,31 +140,23 @@ systick_time_t motor_timer;
 
 void motor_set_direct(volatile struct motor *motorx , unsigned char direction) 
 {
-	GPIO_WriteBit( motorx->dGPIOx , motorx->dGPIO_pin, (BitAction) direction);
+	GPIO_WriteBit( motorx->dGPIOx , motorx->dGPIO_pin, direction);
 }
 
 void motor_en(volatile struct motor *motorx , unsigned char en)
 {
-	GPIO_WriteBit( motorx->eGPIOx , motorx->eGPIO_pin, (BitAction) en);
+	GPIO_WriteBit( motorx->eGPIOx , motorx->eGPIO_pin, en);
 }
 
 
 int motor_rate(volatile struct motor *motorx, unsigned short freq)
 {
 	unsigned short period;
-	GPIO_InitTypeDef GPIO_InitStructure;
 	
 	if( freq < LIMIT_MIN_FREQ ){
 		// stop 
 		motor_en( motorx, MOTOR_EN_OFF);
 		TIM_Cmd(motorx->timer, DISABLE);
-		#if 0
-		GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
-		GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-		GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
-		GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
-		GPIO_WriteBit(motorx->pGPIOx,motorx->pGPIO_pin, Bit_RESET);
-		#endif
 		//pwm_set( motorx->timer, motorx->channel, 0);
 		_LOG("Motor%d set freq(%d)\n", motorx->id, freq);
 		
@@ -176,12 +166,6 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 		TIM_SetAutoreload( motorx->timer , period );
 		pwm_set(motorx->timer , motorx->channel , period/2);
 		TIM_Cmd(motorx->timer, ENABLE);
-		#if 0
-		GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
-		GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-		GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP ;
-		GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
-		#endif
 		motor_en( motorx, MOTOR_EN_ON);
 		_LOG("Motor%d set freq(%d), start...\n", motorx->id, freq);
 	}else{
@@ -305,6 +289,7 @@ void motor_rate_check_even( volatile struct motor *motorx )
 
 void motor_init()
 {
+	GPIO_InitTypeDef GPIO_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
 	
 	motor1.id = MOTOR1_ID;
@@ -616,7 +601,7 @@ void lcd_update_mouse()
 
 void lcd_init()
 {
-	int x,y;
+	int i,x,y;
 	LCD1602_Init();
 	
 	for( x=0; x<2 ; x++){
@@ -758,15 +743,13 @@ void switch_key_press_handler()
 #define SW_INTERVAL_MS 5
 systick_time_t sw_timer;
 
-typedef void (*SwitchHandler) (void);
-
 struct switcher {
 	unsigned char state ; // default level :0/1
 	unsigned char press_level; // 0/1
 	GPIO_TypeDef* GPIOx;
 	uint16_t GPIO_Pin;
-	SwitchHandler press_handler;
-	SwitchHandler release_handler;
+	void (*press_handler)();
+	void (*release_handler)();
 
 	unsigned short counter;
 	unsigned short sum;
@@ -775,7 +758,7 @@ struct switcher {
 volatile struct switcher round_add_key,round_reduce_key,start_key,switch_key;
 
 
-void switcher_init(volatile  struct switcher* sw, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   )
+void switcher_init(volatile  struct switcher* sw, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , void *press_handler() , void *release_handler()   )
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
@@ -995,7 +978,7 @@ void heart_led_init()
 
 void heart_led_even()
 {
-	static BitAction led = Bit_RESET;
+	static char led = Bit_RESET;
 	
 	if( systick_check_timer( &led_timer ) ){
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
@@ -1008,7 +991,7 @@ void cmd_even()
 	static char buffer[4]={0};
 	static char index = 0;
 	
-	if( Uart_Get( CONSOLE_UART , (unsigned char*) &buffer[index], 1 ) ){
+	if( Uart_Get( CONSOLE_UART , &buffer[index], 1 ) ){
 		if( buffer[index] == '\n' ){
 			if( index == 1 ){
 				switch( buffer[index -1 ]){
@@ -1038,22 +1021,16 @@ void cmd_even()
 	}
 }
 
-
-
-
-
-
 void app_init()
 {
 	Uart_init();
-
+	
 #if BOARD_HAS_IAP
 	if( IAP_PORT_USB == 1 ) iap_init_in_usb();
 	else if( IAP_PORT_CAN1 == 1 )iap_init_in_can1();
 	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
 #endif
-
-	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
+	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
 	console_init( CONSOLE_USB_TYPE ,NULL );
 	
 	config_init();
@@ -1074,4 +1051,8 @@ void app_event()
 	
 	config_auto_save_even();
 }
+
+
+
+#endif
 

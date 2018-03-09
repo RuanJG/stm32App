@@ -369,7 +369,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F10X_MD,HSE_VALUE=8000000</Define>
               <Undefine></Undefine>
-              <IncludePath>.\source\app;.\source\board;.\source\USB\lib;.\source\USB\src</IncludePath>
+              <IncludePath>.\source\app;.\source\board;.\source\USB\lib;.\source\USB\src;.\source\applib</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -409,6 +409,51 @@
         </TargetArmAds>
       </TargetOption>
       <Groups>
+        <Group>
+          <GroupName>app</GroupName>
+          <Files>
+            <File>
+              <FileName>app.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\app\app.h</FilePath>
+            </File>
+            <File>
+              <FileName>app_IR_testBoard.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_IR_testBoard.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_motor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_motor.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_Qipad.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_Qipad.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_trex_v2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_trex_v2.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>applib</GroupName>
+          <Files>
+            <File>
+              <FileName>LCD1602.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\applib\LCD1602.c</FilePath>
+            </File>
+            <File>
+              <FileName>LCD1602.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\applib\LCD1602.h</FilePath>
+            </File>
+          </Files>
+        </Group>
         <Group>
           <GroupName>board</GroupName>
           <Files>
@@ -501,31 +546,6 @@
               <FileName>pwm.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\source\board\pwm.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>app</GroupName>
-          <Files>
-            <File>
-              <FileName>app.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\app\app.h</FilePath>
-            </File>
-            <File>
-              <FileName>app.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\app\app.c</FilePath>
-            </File>
-            <File>
-              <FileName>LCD1602.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\app\LCD1602.c</FilePath>
-            </File>
-            <File>
-              <FileName>LCD1602.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\source\app\LCD1602.h</FilePath>
             </File>
           </Files>
         </Group>
