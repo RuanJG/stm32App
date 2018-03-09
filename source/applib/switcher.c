@@ -26,7 +26,7 @@ void switcher_init(volatile  struct switcher* sw, int maxcount, int default_leve
 	
 	GPIO_InitStructure.GPIO_Pin = sw->GPIO_Pin;
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IPU ;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN_FLOATING ;
 	GPIO_Init(sw->GPIOx, &GPIO_InitStructure);
 	
 	
