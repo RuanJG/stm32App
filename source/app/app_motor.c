@@ -8,6 +8,7 @@
 #include "pwm.h"
 #include "LCD1602.h"
 #include "hw_config.h"
+#include "switcher.h"
 #if BOARD_MOTOR
 
 
@@ -754,102 +755,17 @@ void switch_key_press_handler()
 
 
 
-
 #define SW_INTERVAL_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
 #define SW_INTERVAL_MS 5
 systick_time_t sw_timer;
-
-typedef void (*SwitchHandler) (void);
-
-struct switcher {
-	unsigned char state ; // default level :0/1
-	unsigned char press_level; // 0/1
-	GPIO_TypeDef* GPIOx;
-	uint16_t GPIO_Pin;
-	SwitchHandler press_handler;
-	SwitchHandler release_handler;
-
-	unsigned short counter;
-	unsigned short sum;
-};
-
 volatile struct switcher round_add_key,round_reduce_key,start_key,switch_key;
-
-
-void switcher_init(volatile  struct switcher* sw, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   )
-{
-	GPIO_InitTypeDef GPIO_InitStructure;
-	
-	sw->state = default_level; // default state
-	sw->press_level = press_level ; // gpio=0, when press 
-	sw->GPIOx = GPIOX;
-	sw->GPIO_Pin = GPIO_Pin_x;
-	sw->press_handler = press_handler;
-	sw->release_handler = release_handler;
-	
-	if( sw->GPIOx == GPIOA )
-			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-	else if ( sw->GPIOx == GPIOB )
-			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-	else if ( sw->GPIOx == GPIOC )
-			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
-	else if ( sw->GPIOx == GPIOD )
-			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
-	else if ( sw->GPIOx == GPIOE )
-			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOE, ENABLE);
-	
-	GPIO_InitStructure.GPIO_Pin = sw->GPIO_Pin;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IPU ;
-	GPIO_Init(sw->GPIOx, &GPIO_InitStructure);
-	
-	
-	sw->counter = 0;
-	sw->sum = 0;
-}
-
-
-void switcher_interval_check(volatile  struct switcher *sw )
-{
-	char level ;
-	
-	sw->sum += GPIO_ReadInputDataBit( sw->GPIOx, sw->GPIO_Pin );
-	sw->counter++;
-	
-	if( sw->counter  < SW_INTERVAL_COUNT ) return;
-	
-	if( 0 == sw->sum ){
-		// totally level 0
-		level = 0;
-	}else if( sw->sum == sw->counter ){
-		// totally level 1
-		level = 1;
-	}else{
-		level = 2;
-	}
-	
-	sw->counter = 0;
-	sw->sum = 0;
-	
-	if( level == 2 ) return;
-	
-	if( level == sw->press_level ){
-		if( sw->state != level && sw->press_handler != NULL ) sw->press_handler();
-		sw->state = level;
-		
-	}else{
-		if( sw->state != level && sw->release_handler != NULL ) sw->release_handler();
-		sw->state = level;
-	}
-}
-
 
 void switch_init()
 {
-	switcher_init( &round_add_key, 1 , 0 , GPIOA, GPIO_Pin_5, round_add_key_toggle_handler , NULL);
-	switcher_init( &round_reduce_key, 1, 0 , GPIOA, GPIO_Pin_4 , round_reduce_key_toggle_handler, NULL);
-	switcher_init( &start_key , 1, 0 , GPIOB, GPIO_Pin_0, start_key_press_handler ,NULL);
-	switcher_init( &switch_key, 1, 0 , GPIOB, GPIO_Pin_1, switch_key_press_handler ,NULL);
+	switcher_init( &round_add_key, SW_INTERVAL_COUNT, 1 , 0 , GPIOA, GPIO_Pin_5, round_add_key_toggle_handler , NULL);
+	switcher_init( &round_reduce_key, SW_INTERVAL_COUNT,1, 0 , GPIOA, GPIO_Pin_4 , round_reduce_key_toggle_handler, NULL);
+	switcher_init( &start_key , SW_INTERVAL_COUNT,1, 0 , GPIOB, GPIO_Pin_0, start_key_press_handler ,NULL);
+	switcher_init( &switch_key, SW_INTERVAL_COUNT,1, 0 , GPIOB, GPIO_Pin_1, switch_key_press_handler ,NULL);
 	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
 }
 
@@ -857,8 +773,8 @@ void switch_even()
 {
 	if( 0 == systick_check_timer( &sw_timer ) ) return;
 	
-	switcher_interval_check( &round_add_key );
-	switcher_interval_check( &round_reduce_key );
+	switcher_interval_check( &round_add_key  );
+	switcher_interval_check( &round_reduce_key  );
 	switcher_interval_check( &start_key );
 	switcher_interval_check( &switch_key );
 }
@@ -1004,6 +920,8 @@ void heart_led_even()
 	}
 }
 
+
+
 void cmd_even()
 {
 	static char buffer[4]={0};
@@ -1054,7 +972,6 @@ void app_init()
 	else if( IAP_PORT_CAN1 == 1 )iap_init_in_can1();
 	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
 #endif
-
 	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
 	console_init( CONSOLE_USB_TYPE ,NULL );
 	
