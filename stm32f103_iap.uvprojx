@@ -452,6 +452,16 @@
               <FileType>5</FileType>
               <FilePath>.\source\applib\LCD1602.h</FilePath>
             </File>
+            <File>
+              <FileName>switcher.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\applib\switcher.c</FilePath>
+            </File>
+            <File>
+              <FileName>switcher.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\applib\switcher.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
