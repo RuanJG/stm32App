@@ -337,6 +337,9 @@ uint32_t USB_TxWrite_Sync(uint8_t *buffter, uint32_t writeLen)
 			systick_delay_us(500);
 		}
 	}
+	while( fifo_valid(&usb_tx_fifo) > 0 ){
+			systick_delay_us(500);
+	}
 	return i;
 }
 
