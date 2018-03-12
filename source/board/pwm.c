@@ -57,22 +57,109 @@ int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_
 	case 1:
 		TIM_OC1Init(timer, &TIMOCInitStructure);
 		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC1,ENABLE );
+		//if( enable_preload == 1 ) TIM_OC1PreloadConfig( timer, TIM_OCPreload_Enable);
 		break;
 	case 2:
 		TIM_OC2Init(timer, &TIMOCInitStructure);
 		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC2,ENABLE );
+		//if( enable_preload == 1 ) TIM_OC2PreloadConfig( timer, TIM_OCPreload_Enable);
 		break;
 	case 3:
 		TIM_OC3Init(timer, &TIMOCInitStructure);
 		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC3,ENABLE );
+		//if( enable_preload == 1 ) TIM_OC3PreloadConfig( timer, TIM_OCPreload_Enable);
 		break;
 	case 4:
 		TIM_OC4Init(timer, &TIMOCInitStructure);
 		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC4,ENABLE );
+		//if( enable_preload == 1 ) TIM_OC4PreloadConfig( timer, TIM_OCPreload_Enable);
 		break;
 	default:
 		return -1;
 	}
+	
+	//if( enable_preload == 1 ) TIM_ARRPreloadConfig( timer, ENABLE);
+
+	TIM_CtrlPWMOutputs(timer,ENABLE);
+	TIM_Cmd(timer, ENABLE);
+	return 0;
+}
+
+
+int pwm_init2( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0, int enable_OCx_irq, int enable_preload)
+{
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+	TIM_OCInitTypeDef TIMOCInitStructure;
+	unsigned short prescaler ;
+	unsigned int clk  ;//36M
+
+	clk = SystemCoreClock; // 72M
+	// freq = [36M/(prescaler(16bit)+1)] / period 
+	// preriod = 1000 , freq= 1000 Hz , prescaler = 36
+	prescaler = clk/period/freq_hz;
+	//printf( "clk=%d, period=%d, freq=%d Hz, prescal=%d \n", clk,period, freq_hz, prescaler);
+
+	
+	if( timer == TIM1 ){
+		RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE); //APB2 72M clk
+	}else if( timer == TIM2 ) {
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE); //APB1 36M clk
+	}else if( timer == TIM3 ) {
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE); //APB1 36M clk
+	}else if( timer == TIM4 ) {
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE); //APB1 36M clk
+	}
+	
+
+	TIM_Cmd(timer, DISABLE);
+	//TIM_DeInit(timer);
+	TIM_InternalClockConfig(timer);
+	
+	//base config
+	TIM_TimeBaseStructure.TIM_Period= period-1;
+	TIM_TimeBaseStructure.TIM_Prescaler= prescaler-1 ;
+	TIM_TimeBaseStructure.TIM_CounterMode=TIM_CounterMode_Up;
+	TIM_TimeBaseInit(timer, &TIM_TimeBaseStructure);
+
+	//pwm
+	TIMOCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; // pwm mode 1
+	TIMOCInitStructure.TIM_Pulse = 0 ;//default 0%
+	TIMOCInitStructure.TIM_OCPolarity = high1_low0==1? TIM_OCPolarity_High:TIM_OCPolarity_Low ;
+	if( channel > 0 ){
+		TIMOCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+		//TIMOCInitStructure.TIM_OutputNState = TIM_OutputNState_Disable;
+	}else{
+		TIMOCInitStructure.TIM_OutputNState = TIM_OutputNState_Enable;
+		//TIMOCInitStructure.TIM_OutputState = TIM_OutputState_Disable;
+		channel *= -1;
+	}
+	
+	switch( channel ){
+	case 1:
+		TIM_OC1Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC1,ENABLE );
+		if( enable_preload == 1 ) TIM_OC1PreloadConfig( timer, TIM_OCPreload_Enable);
+		break;
+	case 2:
+		TIM_OC2Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC2,ENABLE );
+		if( enable_preload == 1 ) TIM_OC2PreloadConfig( timer, TIM_OCPreload_Enable);
+		break;
+	case 3:
+		TIM_OC3Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC3,ENABLE );
+		if( enable_preload == 1 ) TIM_OC3PreloadConfig( timer, TIM_OCPreload_Enable);
+		break;
+	case 4:
+		TIM_OC4Init(timer, &TIMOCInitStructure);
+		if( enable_OCx_irq == 1 ) TIM_ITConfig(timer,TIM_IT_CC4,ENABLE );
+		if( enable_preload == 1 ) TIM_OC4PreloadConfig( timer, TIM_OCPreload_Enable);
+		break;
+	default:
+		return -1;
+	}
+	
+	if( enable_preload == 1 ) TIM_ARRPreloadConfig( timer, ENABLE);
 
 	TIM_CtrlPWMOutputs(timer,ENABLE);
 	TIM_Cmd(timer, ENABLE);

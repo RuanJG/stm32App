@@ -110,7 +110,7 @@ void LCD1602_Cmd(unsigned char cmd)
 
 	LCD1602_DATA(cmd);
 	
-	Delay_us(100); //50
+	Delay_us(1000); //100
 
 	LCD1602_EN1(); // en low pulse
 	
@@ -152,7 +152,7 @@ void LCD1602_Data(unsigned char data)
 
 	LCD1602_DATA(data);
 
-	Delay_us(100); //50
+	Delay_us(1000); //50
 
 	LCD1602_EN1(); // en low pulse
 	
@@ -223,12 +223,12 @@ void LCD1602_SetMouse(int x,int y)
 	
 	if(x==0)
 	{
-		LCD1602_Cmd(0x80+y);
+		LCD1602_Cmd_NB(0x80+y);
 		//LCD1602_Data(ch);
 	}
 	else
 	{
-		LCD1602_Cmd(0xc0+y);
+		LCD1602_Cmd_NB(0xc0+y);
 		//LCD1602_Data(ch);
 	}
 }
