@@ -107,8 +107,8 @@ void Uart_init()
 #define MOTOR2_ID 2
 #define MOTOR_DIRECTION_RIGHT Bit_SET
 #define MOTOR_DIRECTION_LEFT Bit_RESET
-#define MOTOR_EN_ON  Bit_SET
-#define MOTOR_EN_OFF Bit_RESET
+#define MOTOR_EN_ON  Bit_RESET
+#define MOTOR_EN_OFF Bit_SET
 
 struct motor {
 	unsigned short expect_speed;
@@ -120,7 +120,8 @@ struct motor {
 	unsigned char id;
 	unsigned int   current_pulse;
 	unsigned int   expect_pulse;
-	unsigned int   rate_reduce_pulse_point; 
+	unsigned int   rate_reduce_pulse_point;
+	unsigned int   rate_reduce_expect_freq;
 	float          accelerate_freq;
 	float					 accel;
 	//pwm pin
@@ -160,7 +161,6 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 	
 	if( freq < LIMIT_MIN_FREQ ){
 		// stop 
-		motor_en( motorx, MOTOR_EN_OFF);
 		TIM_Cmd(motorx->timer, DISABLE);
 		#if 0
 		GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
@@ -176,7 +176,7 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 		//set freq
 		period = SystemCoreClock / (motorx->timer->PSC+1) / freq; 
 		TIM_SetAutoreload( motorx->timer , period );
-		pwm_set(motorx->timer , motorx->channel , period/2);
+		pwm_set(motorx->timer , motorx->channel , 10);
 		TIM_Cmd(motorx->timer, ENABLE);
 		#if 0
 		GPIO_InitStructure.GPIO_Pin=motorx->pGPIO_pin;
@@ -184,7 +184,7 @@ int motor_rate(volatile struct motor *motorx, unsigned short freq)
 		GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF_PP ;
 		GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
 		#endif
-		motor_en( motorx, MOTOR_EN_ON);
+		
 		_LOG("Motor%d set freq(%d), start...\n", motorx->id, freq);
 	}else{
 		_LOG("Motor%d set freq(%d) error\n", motorx->id, freq); 
@@ -207,13 +207,29 @@ void motor_hw_init(volatile struct motor *motorx)
 	GPIO_Init(motorx->pGPIOx, &GPIO_InitStructure);
 	//default pwm=0 , set freq at max  ; motor controler freq 0-200KHZ , limit at [0,1000] hz
 	pwm_init(motorx->timer, motorx->channel, 20 ,  MAX_FREQ , 1 , 1); 
-	
+	TIM_ARRPreloadConfig( motorx->timer, ENABLE);
+	switch( motorx->channel ){
+	case 1:
+		TIM_OC1PreloadConfig( motorx->timer, TIM_OCPreload_Enable);
+		break;
+	case 2:
+		TIM_OC2PreloadConfig( motorx->timer, TIM_OCPreload_Enable);
+		break;
+	case 3:
+		TIM_OC3PreloadConfig( motorx->timer, TIM_OCPreload_Enable);
+		break;
+	case 4:
+		TIM_OC4PreloadConfig( motorx->timer, TIM_OCPreload_Enable);
+		break;
+	}
+
 	//en pin
 	GPIO_InitStructure.GPIO_Pin=motorx->eGPIO_pin;
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
 	GPIO_Init(motorx->eGPIOx, &GPIO_InitStructure);
 	motor_en( motorx, MOTOR_EN_OFF);
+	
 	//dir pin
 	GPIO_InitStructure.GPIO_Pin=motorx->dGPIO_pin;
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
@@ -262,12 +278,15 @@ void motor_rate_check_even( volatile struct motor *motorx )
 	int freq, exfreq;
 	
 	// has been stop
-	if( motorx->current_pulse >= motorx->expect_pulse )
+	if( motorx->current_pulse >= motorx->expect_pulse ){
+		//systick_delay_us(500000);
+		motor_en( motorx, MOTOR_EN_OFF);
 		return;
+	}
 	
 	//if time to reduce speed 
 	if( motorx->current_pulse >= motorx->rate_reduce_pulse_point ) {
-			motorx->expect_freq = motorx->accelerate_freq;
+			motorx->expect_freq = motorx->rate_reduce_expect_freq;//motorx->accelerate_freq*1000;
 	}
 	
 	// has been average speed
@@ -278,18 +297,15 @@ void motor_rate_check_even( volatile struct motor *motorx )
 	
 	// add or reduce speed
 	exfreq = motorx->expect_freq;
+	motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
+	freq = motorx->accel; // 去小数
+	motorx->accel -= freq;
 	if( motorx->current_freq < exfreq )
 	{
-		motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
-		freq = motorx->accel; // 去小数
-		motorx->accel -= freq;
 		freq += motorx->current_freq;// add rate
-		freq = (freq <= exfreq) ? freq: exfreq;
+		freq = (freq < exfreq) ? freq: exfreq;
 	}else{
-		motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
-		freq = motorx->accel; // 去小数
-		motorx->accel -= freq;
-		freq = motorx->current_freq - freq;// add rate
+		freq = motorx->current_freq - freq;// reduce rate
 		freq = (freq >= exfreq) ? freq: exfreq;
 	}
 	
@@ -393,10 +409,8 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	//t = v/a;  
 	// s = v*t/2  ==>  s = v*(v/a)/2 = (v*v)/(a*2); 
 	float accel = 40; // p/ss //expect_freq*expect_freq/ONE_ROUND_FREQ ;// p/s*s
-	float ref_accel = 40;
-	int ref_freq = 100;
+	unsigned int pulse;
 	
-	accel = ref_accel * expect_freq/ref_freq ; //  根据速度与参考速度的比例 ，调整加速时间
 	
 	// running
 	if( motorx->current_pulse < motorx->expect_pulse ){
@@ -412,32 +426,47 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 		_LOG("motor%d start : round count error\n", motorx->id);
 		return;
 	}
-
 	
-	//add speed from 0-v: 0.5 round 最快的加速度
-	motorx->rate_reduce_pulse_point = expect_pulse - LIMIT_MIN_ROUND_COUNT*ONE_ROUND_FREQ/2;
 	
+	accel = 50;//ref_accel * expect_freq/ref_freq ; //  根据速度与参考速度的比例 ，调整加速时间
+	pulse = expect_freq*expect_freq/2/accel;
+	if( pulse*2 >= expect_pulse ){
+		motorx->rate_reduce_pulse_point = expect_pulse- expect_freq*expect_freq/2/accel;
+	}else{
+		motorx->rate_reduce_pulse_point = expect_pulse/2;
+	}
+	
+	motorx->rate_reduce_expect_freq = 10;
 	motorx->accelerate_freq = accel/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_FREQ;
-	motorx->rate_reduce_pulse_point = expect_pulse- expect_freq*expect_freq/2/accel;
 	motorx->accel = 0;
-	
-	motor_set_direct( motorx, motorx->direction);
 	
 	motorx->expect_freq = expect_freq;
 	motorx->expect_pulse = expect_pulse;
 	motorx->current_pulse = 0;
+	motorx->current_freq = 10;
+	
+	motor_set_direct( motorx, motorx->direction);
+	motor_en( motorx, MOTOR_EN_ON);
+	systick_delay_us(500000);
 }
 
 
 void motor_stop(volatile struct motor *motorx)
 {
+	unsigned int pulse;
+	
 		// has stoped
 	if( motorx->current_pulse >= motorx->expect_pulse )
 		return;
 	
 	//goto the reduce rate state
-	if( motorx->current_pulse < motorx->rate_reduce_pulse_point )
-		motorx->current_pulse = motorx->rate_reduce_pulse_point;
+	if( motorx->current_pulse < motorx->rate_reduce_pulse_point ){
+		pulse = motorx->current_freq *motorx->current_freq/2/(motorx->accelerate_freq*1000);
+		motorx->current_pulse = 1;
+		motorx->expect_pulse = pulse;
+		motorx->rate_reduce_pulse_point = 0;
+		//if( motorx->current_freq < motorx->accelerate_freq*1000 )			motorx->current_pulse = motorx->expect_pulse;
+	}
 }
 
 
@@ -979,7 +1008,6 @@ void app_init()
 	motor_init();
 	lcd_init();
 	switch_init();
-	
 	heart_led_init();
 }
 
@@ -990,7 +1018,6 @@ void app_event()
 	switch_even();
 	heart_led_even();
 	cmd_even();
-	
 	config_auto_save_even();
 }
 
