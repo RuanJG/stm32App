@@ -67,6 +67,19 @@ void systick_delay_us(u32 us)
 	while(TimingDelay != 0);
 }
 
+void systick_delay_ms(u32 ms)
+{
+	/*
+	volatile u32 end_ms;
+	end_ms = ms+systick_ms;
+	while(1){
+		if( systick_ms >= end_ms ) break;
+	}*/
+	TimingDelay = ms*1000;
+	while(1){
+		if( TimingDelay <= 0) break;
+	}		
+}
 
 int systick_init_timer(systick_time_t *time_t, int ms)
 {

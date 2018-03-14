@@ -14,16 +14,28 @@
 #define _LOG(X...) if( 1 ) printf(X);
 
 
+/*
+Uart1 A Meter  ( PA9 PA10)
+Uart3 V Meter  ( PB10 PB11 )
+
+ADC ( PA0-red PA4-white1 PA5-white2 )
+
+switch (PB0 PB1)
+
+valve ( PA7 , PA6, PA15, PA2 , PA3 ,[PA1] ) 
+
+
+
+*/
+
+
 
 Uart_t Uart1;
 Uart_t Uart2;
 Uart_t Uart3;
 
-#define CURRENT_UART &Uart3
-#define PC_UART &Uart2
-#define CONSOLE_UART &Uart1
-#define IAP_UART &Uart2
-#define METER_UART &Uart1
+
+
 
 void Uart_init()
 {
@@ -64,7 +76,7 @@ void Uart_init()
 	Uart_Configuration (&Uart2, USART2, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 #endif
 
-#if 0
+#if 1
 	//USART3								  
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
@@ -77,7 +89,7 @@ void Uart_init()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
 	GPIO_Init(GPIOB, &GPIO_InitStructure); 
 	
-	Uart_Configuration (&Uart3, USART3, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+	Uart_Configuration (&Uart3, USART3, 9600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 	
 #endif
 
@@ -113,7 +125,7 @@ void Uart_init()
 
 
 #define ADC_SAMPLE_COUNT 34  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
-#define ADC_SAMPLE_CHANNEL_COUNT 1
+#define ADC_SAMPLE_CHANNEL_COUNT 3
 static unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
 volatile int adc_updated;
 
@@ -130,11 +142,16 @@ void ADC_Configuration ()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 	
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);	
+	GPIO_Init(GPIOA, &GPIO_InitStructure);	
 
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);	
+	
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);	
 	
 	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
 	ADC_InitStructure.ADC_ScanConvMode = ENABLE;
@@ -146,7 +163,9 @@ void ADC_Configuration ()
 	
 	// 239.5 sampleTime => (239.5+12.5)/12M = 21us; 21*ADC_SAMPLE_COUNT * 3 = ADC_SAMPLE_COUNT * 63us = 1.890ms each group
 	// 71.5 smapleTime => 7us; 7us*ADC_SAMPLE_COUNT*3 = ADC_SAMPLE_COUNT* 21us = 0.630 ms 
-	ADC_RegularChannelConfig(ADC1, ADC_Channel_9, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_0, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_4, 2, ADC_SampleTime_239Cycles5);
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_5, 3, ADC_SampleTime_239Cycles5);
  
 	// set ADC channel for temperature sensor
 	//ADC_TempSensorVrefintCmd(ENABLE);
@@ -223,138 +242,125 @@ unsigned short Cali_Adc_Value(int id)
 }
 
 
-void userStation_log( char * str );
 
-/*
-*  get adc value
-*		if ok , return db ( db > 0 )
-*  	else  ,  return error ( -1 )
-*/
-int get_voice_db()
+#define RED_LED_ADC_ID 0
+#define WHITE1_LED_ADC_ID 1
+#define WHITE2_LED_ADC_ID 2
+
+#define RED_LED_HIGHT_LEVEL  30
+#define WHITE1_LED_HIGHT_LEVEL 1000
+#define WHITE2_LED_HIGHT_LEVEL 1000
+
+volatile int red_led_adc , white1_led_adc, white2_led_adc;
+void LED_Detection_init()
 {
-	unsigned short adc;
-	int db;
-	char buffer[32]={0};
-	
-	if( adc_updated == 0 )
-		return -1;
-	
-	adc = Cali_Adc_Value(0);
-	adc_updated = 0;
-	
-	//_LOG("adc=%d\n",adc);
-	//db = vol/10 ==> (adc*3300/4096) / 10
-	//db = (adc*2933)/40960;
-	//db = (adc*3344)/40960;
-	
-	//db = (( adc*3300/4096 ) / 3162 ) *94; // 94: 1Pa=94db ; 3162: 3162mV/Pa 
-	//db = adc*3300*94*2/4096/3801; // adc*0.02395
-	db = adc*0.039848;
-	
-	//db = (adc*3300)/4096;
-	//sprintf(buffer,"db=%d",db);
-	//userStation_log( buffer );
-
-	return db;
-	
+	ADC_Configuration ();
+	red_led_adc = 0;
+	white1_led_adc = 0;
+	white2_led_adc = 0;
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#define LED_STATUS_ID 1
-#define LED_ERROR_ID 2
-#define LED_PASS_ID 3
-#define LED_VOICE_ERROR_ID 4
-#define LED_CURRENT_ERROR_ID 5
-
-#define LED_ON_CMD 1
-#define LED_OFF_CMD 2
-#define LED_CHECK_CMD 3
-
-int led_ctrl(int id, char cmd)
+int is_red_led_on()
 {
-	GPIO_TypeDef* gpio;
-	uint16_t pin;
-	int onValue;
-
-	switch( id ){
-		case LED_STATUS_ID:
-			gpio = GPIOB; pin = GPIO_Pin_3; onValue = 0;
-			break;
-		case LED_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_4; onValue = 0;
-			break;
-		case LED_PASS_ID:
-			gpio = GPIOB; pin = GPIO_Pin_5; onValue = 0;
-			break;
-		case LED_VOICE_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_6; onValue = 0;
-			break;
-		case LED_CURRENT_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_7; onValue = 0;
-			break;		
-		
+	if( adc_updated != 0 ){
+		red_led_adc = Cali_Adc_Value(RED_LED_ADC_ID);
 	}
 	
-	if( cmd == LED_ON_CMD ){
-		if( onValue == 0 )
-			GPIO_ResetBits( gpio, pin );
-		else
-			GPIO_SetBits( gpio, pin);
+	red_led_adc = 4096 - red_led_adc;
+	_LOG("red adc=%d\n",red_led_adc);
+	
+	if( red_led_adc >= RED_LED_HIGHT_LEVEL ){
+		return 1;
+	}else{ 
 		return 0;
-		
-	}else if( cmd == LED_OFF_CMD ){
-		if( onValue == 0 )
-			GPIO_SetBits( gpio, pin);		
-		else
-			GPIO_ResetBits( gpio, pin );
+	}
+}
+
+int is_white1_led_on()
+{
+	if( adc_updated != 0 ){
+		white1_led_adc = Cali_Adc_Value(WHITE1_LED_ADC_ID);
+	}
+	
+	white1_led_adc = 4096 - white1_led_adc;
+	_LOG("white1 adc=%d\n",white1_led_adc);
+	
+	if( white1_led_adc >= WHITE1_LED_HIGHT_LEVEL ){
+		return 1;
+	}else{ 
 		return 0;
-		
-	}else if( cmd == LED_CHECK_CMD ){
-		return onValue == GPIO_ReadOutputDataBit( gpio, pin );
-		
-	}else{
-		return -1;
 	}
 }
 
-void led_on(int id)
+int is_white2_led_on()
 {
-	led_ctrl( id, LED_ON_CMD );
-}
-
-void led_off(int id)
-{
-	led_ctrl( id, LED_OFF_CMD );
-}
-
-int is_led_on(int id)
-{
-	return led_ctrl( id, LED_CHECK_CMD );	
-}
-
-void led_toggle(int id)
-{
-	if( is_led_on(id)){
-		led_off(id);
-	}else{
-		led_on(id);
+	if( adc_updated != 0 ){
+		white2_led_adc = Cali_Adc_Value(WHITE2_LED_ADC_ID);
+	}
+	
+	white2_led_adc = 4096 - white2_led_adc;
+	_LOG("white2 adc=%d\n",white2_led_adc);
+	
+	if( white2_led_adc >= WHITE2_LED_HIGHT_LEVEL ){
+		return 1;
+	}else{ 
+		return 0;
 	}
 }
 
+
+volatile int check_led_toggle_server_tag;
+volatile int check_led_toggle_counter;
+volatile int check_led_toggle_level;
+
+void check_led_toggle_server_init()
+{
+	check_led_toggle_server_tag = 1;
+	check_led_toggle_counter = 0;
+	check_led_toggle_level = 0;
+}
+
+void check_led_toggle_server_event()
+{
+	int level;
+	
+	if( check_led_toggle_server_tag == 0) return;
+	
+	level = is_red_led_on() + is_white1_led_on() + is_white2_led_on();
+	if( level == 3 ){
+		if( check_led_toggle_level == 0 ){
+			check_led_toggle_counter++;
+		}
+		check_led_toggle_level = level;
+	}else{
+		check_led_toggle_level = 0;
+	}
+	
+}
+
+void check_led_toggle_server_stop()
+{
+	check_led_toggle_server_tag = 0;
+}
+
+int is_check_led_toggle_server_start()
+{
+	return check_led_toggle_server_tag;
+}
+
+
+
+
+
+
+
+#define FALSE_LED_ON() GPIOB->BSRR = GPIO_Pin_8;
+#define FALSE_LED_OFF() GPIOB->BRR = GPIO_Pin_8;
+#define PASS_LED_ON() 	GPIOB->BSRR = GPIO_Pin_5;
+#define PASS_LED_OFF()	GPIOB->BRR = GPIO_Pin_5;
+#define RUNING_LEN_ON()	GPIOB->BSRR = GPIO_Pin_6;
+#define RUNING_LEN_OFF()	GPIOB->BRR = GPIO_Pin_6;
 
 void led_pin_config()
 {
@@ -363,17 +369,14 @@ void led_pin_config()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_5 | GPIO_Pin_6;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
-	led_off(LED_ERROR_ID);
-	led_off(LED_PASS_ID);
-	led_off(LED_VOICE_ERROR_ID);
-	led_off(LED_CURRENT_ERROR_ID);
-	led_off(LED_STATUS_ID);
-	
+	FALSE_LED_OFF();
+	PASS_LED_OFF();
+	RUNING_LEN_ON();
 }
 
 
@@ -382,361 +385,6 @@ void led_pin_config()
 
 
 
-
-
-
-
-
-
-static int sw_value;
-static int sw_counter;
-static int sw_on_tag;
-#define SW_MAX_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
-systick_time_t sw_timer;
-
-void switch_det_config()
-{
-	GPIO_InitTypeDef GPIO_InitStructure;	
-	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
-
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
-	sw_value = 0;
-	sw_counter = 0;
-	sw_on_tag = 0;
-	
-	systick_init_timer( &sw_timer, 10 );
-	
-}
-
-void switch_det_event()
-{
-	
-	if( 0 == systick_check_timer( &sw_timer ) )
-		return;
-	
-	sw_value +=  GPIO_ReadInputDataBit( GPIOB, GPIO_Pin_2 );
-	sw_counter++;
-	
-	if( sw_counter >= SW_MAX_COUNT ){
-		//_LOG("sw=%d\n",sw_value);
-		if( sw_value >= SW_MAX_COUNT ){
-		//if( sw_value == 0 ){
-			sw_on_tag = 1;
-		}else {
-			sw_on_tag = 0;
-		}
-		sw_value = 0;
-		sw_counter = 0;
-	}
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
-  #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
-#else
-  #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
-#endif
-#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
-#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
-
-// the size of struct config should be n*4Byte
-struct config {
-	int config_avaliable;
-	float current_max;
-	float current_min;
-	int db_max;
-	int db_min;
-};
-volatile struct config g_config;
-
-
-void config_read()
-{
-	volatile int * p;
-	__IO int* addr;
-	int i, int_count;
-	
-	addr = (__IO int*) CONFIG_ADDRESS;
-	int_count = sizeof( struct config )/sizeof( int );	
-	p = (volatile int*)&g_config;
-	for( i=0; i< int_count  ; i++ ){
-		*(p+i) = *(__IO int*) addr;
-		addr++;
-	}
-	
-}
-
-int config_save()
-{
-	int timeout, i, res;
-	volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
-	volatile int * data = (volatile int *) &g_config;
-	int addr = CONFIG_ADDRESS;
-	int int_count = sizeof( struct config )/sizeof( int );
-	
-	g_config.config_avaliable = 1;
-		
-	FLASHStatus = FLASH_COMPLETE;
-	FLASH_Unlock();
-	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
-	
-	res = 0;
-	timeout = 10;
-	while( timeout-- > 0)
-	{
-		FLASHStatus = FLASH_ErasePage(addr);
-		if( FLASHStatus == FLASH_COMPLETE ){
-			res = 1;
-			break;
-		}
-	}
-	
-	if( res == 1 )
-	{
-		for ( i = 0; i< int_count ; i++ )
-		{
-			res = 0;
-			timeout = 10;
-			while( timeout-- > 0)
-			{
-				FLASHStatus = FLASH_ProgramWord( addr+4*i, *(data+i) ) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
-				if( FLASHStatus == FLASH_COMPLETE ){
-					res = 1;
-					break;
-				}
-			}
-			if( res == 0 ) break;
-		}
-	}
-
-	FLASH_Lock();
-	
-	return res;
-}
-
-
-void config_init()
-{
-	//if no this setting , flash will very slow
-	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
-	g_config.config_avaliable = 0;
-	config_read();
-	if( g_config.config_avaliable != 1 ){
-		// never init
-		g_config.config_avaliable = 1;
-		g_config.current_max = 0.5 ; //A
-		g_config.current_min = 0.35 ; //A
-		g_config.db_max = 65;
-		g_config.db_min = 30;
-		config_save();
-	}
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-// packget  head tag 
-#define USER_DATA_TAG	1
-#define USER_LOG_TAG	2
-#define USER_START_TAG	3
-#define USER_CONFIG_TAG	4
-#define USER_CMD_CHMOD_TAG 4
-#define USER_CMD_CURRENT_MAXMIN_TAG 5
-#define USER_CMD_VOICE_MAXMIN_TAG 6
-#define USER_CMD_GET_MAXMIN_TAG 7
-
-//packget body : result error value
-#define USER_RES_CURRENT_FALSE_FLAG 1
-#define USER_RES_VOICE_FALSE_FLAG 2
-#define USER_RES_ERROR_FLAG 4
-
-//work_mode value
-#define USER_MODE_ONLINE 1
-#define USER_MODE_OFFLINE 2
-
-
-
-Uart_t *userUart=NULL;
-protocol_t encoder;
-protocol_t decoder;
-volatile unsigned char userStation_mode;
-
-void userStation_init()
-{
-	userUart = PC_UART;
-	userStation_mode = USER_MODE_ONLINE;
-	protocol_init( &encoder );
-	protocol_init( &decoder );
-	
-}
-
-int userStation_send( unsigned char *data , int len)
-{
-	if( 1 == protocol_encode( &encoder, data, len ) ){
-		//Uart_Put_Sync( userUart , encoder.data, encoder.len );
-		USB_TxWrite( encoder.data, encoder.len );
-		return 1;
-	}else{
-		return 0;
-	}
-}
-
-void userStation_log( char * str ){
-	unsigned char buffer[ 32 ];
-	
-	if( strlen( str ) > 30 )
-		return;
-	
-	buffer[0] = USER_LOG_TAG;
-	memcpy( &buffer[1], str , strlen(str) );
-	
-	if( 0 == userStation_send( buffer, strlen(str)+1 ) ){
-		_LOG("userStation_log: encode false");
-	}
-	
-}
-
-
-void userStation_report(int db, float current, int work_counter, int error)
-{
-	//tag[0]+db[0]db[1]db[2]db[3]+current[....]+work_current[0]+error[0]  ; work_counter is the count of the records
-	
-	unsigned char buffer[11];
-	
-	buffer[0]= USER_DATA_TAG;
-	memcpy( &buffer[1], (unsigned char*) &db, 4 ) ;
-	memcpy( &buffer[5], (unsigned char*) &current , 4 ); 
-	buffer[9]= work_counter;
-	buffer[10] = error;
-	
-
-	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
-		_LOG("userStation_report: report false\n");
-		userStation_log("userStation_report: report false\n");
-	}
-	
-	_LOG("report: db=%d, current=%f , count=%d, error=%d\n", db, current, work_counter ,error);
-}
-
-void userStation_send_config()
-{
-	unsigned char buffer[18];
-	
-	buffer[0]= USER_CONFIG_TAG;
-	buffer[1] = g_config.config_avaliable; // 1 available
-	memcpy( &buffer[2], (unsigned char*) &g_config.current_max, 4 ) ;
-	memcpy( &buffer[6], (unsigned char*) &g_config.current_min , 4 ); 
-	memcpy( &buffer[10], (unsigned char*) &g_config.db_max, 4 ) ;
-	memcpy( &buffer[14], (unsigned char*) &g_config.db_min , 4 ); 
-	
-	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
-		_LOG("send config false\n");
-		userStation_log("send config false\n");
-	}
-	
-}
-
-
-
-void userStation_handleMsg( unsigned char *data, int len)
-{
-	int dbmin,dbmax;
-	float cmax,cmin;
-	unsigned char buffer[32]={0};
-	
-	switch( data[0] ){
-		case USER_CMD_CHMOD_TAG:
-			if( len == 2 ){
-				userStation_mode = data[1];
-			}
-			break;
-			
-		case USER_CMD_CURRENT_MAXMIN_TAG:
-			if( len == 9 ){
-				memcpy( (char*)&cmax, data+1, 4);
-				memcpy( (char*)&cmin, data+5, 4);
-				g_config.current_max = cmax;
-				g_config.current_min = cmin;
-				config_save();
-				userStation_send_config();
-				sprintf((char*)buffer,"current=[%fA,%fA]",g_config.current_min, g_config.current_max);
-				userStation_log( (char*) buffer );
-			}
-			break;
-		
-		case USER_CMD_VOICE_MAXMIN_TAG:
-			if( len == 9 ){
-				memcpy( (char*)&dbmax, data+1, 4);
-				memcpy( (char*)&dbmin, data+5, 4);
-				g_config.db_max = dbmax;
-				g_config.db_min = dbmin;
-				config_save();
-				userStation_send_config();
-				sprintf((char*)buffer,"db=[%d,%d]",g_config.db_min, g_config.db_max);
-				userStation_log( (char*) buffer );
-			}
-			break;
-			
-		case USER_CMD_GET_MAXMIN_TAG:
-			userStation_send_config();
-			break;
-		
-		default:
-			break;
-	}
-}
-
-void userStation_listen_even()
-{
-	unsigned char buffer[8];
-	unsigned char i, len;
-	
-	//len = Uart_Get( userUart, buffer, 8 );
-	len = USB_RxRead ( buffer, 8 );
-	for( i=0 ; i<len; i++ ){
-		if( 1 == protocol_parse( &decoder, buffer[i] ) ){
-			userStation_handleMsg( decoder.data, decoder.len );
-		}
-	}
-	
-}
-
-
-
-
-
-#define USING_MINIMETER 1
-#define USING_VICTORMETER 0
-
-
-
-#if USING_MINIMETER
 
 /*
 出厂时仪表波特率是9600,可以自行设置
@@ -760,15 +408,17 @@ typedef struct miniMeterCoder {
 	unsigned char index;
 	unsigned char addr;
 	float 				value;
+	Uart_t				*uart;
 }miniMeterCoder_t;
 
-void miniMeterCoder_init(miniMeterCoder_t * coder)
+void miniMeterCoder_init(miniMeterCoder_t * coder, Uart_t* uart)
 {
 	int i;
 	for( i=0; i< sizeof(coder->packet); i++)
 		coder->packet[i]=0;
 	coder->index = 0;
 	coder->addr = 0;
+  coder->uart = uart;
 }
 
 int miniMeterCoder_prase( miniMeterCoder_t * coder, unsigned char data )
@@ -799,455 +449,192 @@ int miniMeterCoder_prase( miniMeterCoder_t * coder, unsigned char data )
 	return 0;
 }
 
-
-
-miniMeterCoder_t currentMeter;
-
-void miniMeter_init()
-{
-	miniMeterCoder_init( &currentMeter );
-}
-
-void miniMeter_start()
-{
-	unsigned char packget[]={0x88,0xAE,0x00,0x21};
-	
-	Uart_Put(METER_UART, packget, sizeof( packget) );
-}
-
-void miniMeter_stop()
-{
-	unsigned char packget[]={0x88,0xAE,0x00,0x01};
-	
-	Uart_Put(METER_UART, packget, sizeof( packget) );
-}
-
-void miniMeter_toggle()
-{
-	unsigned char packget[]={0x88,0xAE,0x00,0x11};
-	
-	Uart_Put(METER_UART, packget, sizeof( packget) );
-}
-
-
-void miniMeter_test_even()
+int miniMeterCoder_read(miniMeterCoder_t * coder, float *value)
 {
 	unsigned char packget[8];
 	int i,count;
-	char buffer[16] = {0};
+	char res = 0;
 
-	count = Uart_Get( METER_UART , packget, sizeof( packget ) );
-	if( count == 0 ) return;
-	
-	for( i=0; i< count ; i++){
-		if( 1 == miniMeterCoder_prase( &currentMeter , packget[i] ) ){
-			//sprintf(buffer,"%3.5fV",currentMeter.value);
-			//userStation_log(buffer);
-			_LOG( "%.5fV" , currentMeter.value);
-		}
-	}
-}
-
-
-
-
-int service_getCurrent( float *A)
-{
-	unsigned char packget[8];
-	int i,count;
-
-	count = Uart_Get( METER_UART , packget, sizeof( packget ) );
+	count = Uart_Get( coder->uart	, packget, sizeof( packget ) );
 	if( count == 0 ) return 0;
 	
 	for( i=0; i< count ; i++){
-		if( 1 == miniMeterCoder_prase( &currentMeter , packget[i] ) ){
-			//sprintf(buffer,"%3.5fV",currentMeter.value);
-			//userStation_log(buffer);
-			//_LOG( "%.5fV" , currentMeter.value);
-			*A = currentMeter.value;
-		}
-	}
-	return 1;
-}
-
-#endif
-
-
-
-
-#if USING_VICTORMETER
-
-Uart_t *victor8165Uart;
-
-#define VICTOR8165_BUFFSIZE 32
-volatile unsigned char victor8165_buf[VICTOR8165_BUFFSIZE];
-volatile unsigned char victor8165_inited = 0;
-systick_time_t victor8165_cmd_timer;
-
-int victor8165_cmd( char * cmd  )
-{
-	int i,count,len;
-	
-	while( systick_check_timer( &victor8165_cmd_timer ) == 0 ){
-		systick_delay_us(500);
-	}
-	Uart_Clear_Rx( victor8165Uart );
-	//while( 1 == Uart_Get( victor8165Uart, &victor8165_buf[0] , 1) );
-	
-	i = strlen(cmd);
-	Uart_Put_Sync( victor8165Uart, (unsigned char *)cmd, i );
-	//_LOG("cmd:%s",cmd);
-	
-	//get result , 1000ms timeout;
-	count = 0;
-	len = 0;
-	for( i=0; i< 500 ; i++ ){
-		count = Uart_Get( victor8165Uart, &victor8165_buf[len] , VICTOR8165_BUFFSIZE - len -1);
-		len += count;
-		if( len > 0 && victor8165_buf[len-1]==0x0A ){
-			//systick_delay_us(50000);
-			victor8165_buf[len]= 0;
-			systick_init_timer( &victor8165_cmd_timer , 10); // next cmd need to wait 50ms
-			return len;
-		}
-		if( count > 0 ) i--;
-		systick_delay_us( 1000 );
-	}
-	
-	//Uart_Put( victor8165Uart, (unsigned char *)"\n", 1 );
-	//systick_delay_us( 100000 );
-	_LOG("cmd:%s  timeout\n",cmd);
-	systick_init_timer( &victor8165_cmd_timer , 100); // next cmd need to wait 100ms
-	
-	return 0;
-}
-
-int victor8165_check(const char* cmd, const char *result)
-{
-	int len;
-	int i;
-	
-	len = victor8165_cmd( (char*) cmd);
-	if( len == strlen(result) && 0 == strncmp(result,(char*) victor8165_buf , len) ){
-		return 1;
-	}
-	
-	/*
-	for( i=0; i< len; i++ ){
-		
-		if( result[i] != victor8165_buf[i] ){
-			userStation_log( "x,");
-			return 0;
-		}else{
-			userStation_log( "1,");
-		}
-	}
-	
-	return 1;
-	*/
-	
-	userStation_log( "check :\n");
-	userStation_log((char*)cmd);
-	userStation_log((char*)victor8165_buf);
-	return 0;
-}
-
-
-void victor8165_init()
-{
-	int retry,res;
-	
-	victor8165Uart = CURRENT_UART;
-	systick_init_timer( &victor8165_cmd_timer , 10);
-	
-	//set DCI mode
-	res = 0;
-	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "ADC\n");
-		if( 1 == victor8165_check( "FUNC1?\n", "ADC\n") ){
+		if( 1 == miniMeterCoder_prase( coder , packget[i] ) ){
+			_LOG( "%.5fV" , coder->value);
 			res = 1;
-			break;
 		}
 	}
-	if( res ) {
-		_LOG("victor8165_init: set DCI mode ok\n");
-		userStation_log("init: DCI ok");
-	}else{
-		_LOG("victor8165_init: set DCI mode false\n");
-		userStation_log("init: DCI false");
-		return;
-	}
 	
-	//set Rate
-	res = 0;
-	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "RATE M\n");
-		if( 1 == victor8165_check( "RATE?\n", "M\n") ){
-			res = 1;
-			break;
-		}
-	}
-	if( res ) {
-		_LOG("victor8165_init: set Rate M mode ok\n");
-		userStation_log("init: Rate ok");
-	}else{
-		_LOG("victor8165_init: set Rate M mode false\n");
-		userStation_log("init: Rate false");
-		return;
-	}
-	
-	//set range AUTO
-	res = 0;
-	for( retry = 0; retry < 2; retry++ ){
-		victor8165_cmd( "RANGE 5\n");
-		if( 1 == victor8165_check( "RANGE1?\n", "6\n") ){
-			res = 1;
-			break;
-		}
-	}
-	if( res ) {
-		_LOG("victor8165_init: set AUTO mode ok\n");
-		userStation_log("init: Auto ok");
-	}else{
-		_LOG("victor8165_init: set AUTO mode false\n");
-		userStation_log("init: Auto false");
-		return;
-	}
-	
-	victor8165_inited = 1;
-	
+	return res;
 }
 
-
-int service_getCurrent( float *A)
+void miniMeterCoder_clear( miniMeterCoder_t * coder )
 {
-	int retry, len;
+	unsigned char tmp;
 	
-	//victor8165_check( "FUNC1?\n", "ADC\n");
-	//if( victor8165_inited == 0 ||  0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
-	if( victor8165_inited == 0 ){
-		_LOG("victor8165_getCurrent: need to init\n");
-		victor8165_inited = 0;
-		victor8165_init();
-		return 0;
-	}
-	
-	
-	for( retry = 0; retry < 2; retry++ ){
-		len = victor8165_cmd( "MEAS1?\n");
-		if( len > 0 ) 
-			break;
-	}
-	
-	if( len == 0 ){
-		return 0;
-	}
-	
-	victor8165_buf[len] = 0; // set string end tag
-	sscanf((const char*)victor8165_buf , "%e;\n",  A);
-	//*mA = A*1000;
-	
-	return 1;
+	coder->index = 0;
+	if( coder->uart != NULL )
+		while( Uart_Get( coder->uart	, &tmp, 1) );
 }
 
 
-#endif
+#define A_METER_UART &Uart1
+#define V_METER_UART &Uart3
+miniMeterCoder_t currentMeter;
+miniMeterCoder_t voltageMeter;
 
-
-
-
-
-
-
-
-
-
-#define CALI_DATA_COUNT 50
-systick_time_t led_timer;
-systick_time_t collect_1s_timer;
-systick_time_t work_timer;
-static int work_counter;
-static int db_array[CALI_DATA_COUNT];
-static float current_array[CALI_DATA_COUNT];
-static unsigned char server_status; // 0: idel ,  1:cail
-static unsigned char server_collect_over;
-void server_init()
+void miniMeter_init()
 {
-	server_status =0;
-	work_counter = 0;
-	server_collect_over = 0;
-	#if USING_VICTORMETER 
-	victor8165_init();
-	#endif
-	#if USING_MINIMETER
-	miniMeter_init();
-	#endif
+	miniMeterCoder_init( &currentMeter , A_METER_UART);
+	miniMeterCoder_init( &voltageMeter , V_METER_UART);
 }
 
-void server_start()
+void miniMeter_start(miniMeterCoder_t * coder)
 {
-	unsigned char tag;
-	int delay_ms = 3000;
+	unsigned char packget[]={0x88,0xAE,0x00,0x21};
 	
-	//delay 10000ms for start read data
-	systick_init_timer( &work_timer, delay_ms);
-	//read current and db in 1s
-	systick_init_timer( &collect_1s_timer, 7000+delay_ms );
-	work_counter = 0;
-	server_collect_over = 0;
-	
-	tag = USER_START_TAG;	
-	userStation_send( &tag , 1 );
-	userStation_send_config();
-	
-	//set led status
-	led_on(LED_STATUS_ID);
-	led_off( LED_ERROR_ID );
-	led_off(LED_PASS_ID);
-	led_off(LED_VOICE_ERROR_ID);
-	led_off(LED_CURRENT_ERROR_ID);
-	
-	#if USING_MINIMETER
-	miniMeter_start();
-	#endif
-	
-	#if USING_VICTORMETER 
-	if( 0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
-		_LOG("victor8165_getCurrent: need to init\n");
-		victor8165_inited = 0;
-		victor8165_init();
-	}
-	#endif
+	Uart_Put(coder->uart, packget, sizeof( packget) );
 }
 
-void server_stop()
+void miniMeter_stop(miniMeterCoder_t * coder)
 {
-	int i,error;
-	float current;
-	int db;
+	unsigned char packget[]={0x88,0xAE,0x00,0x01};
 	
-	if( work_counter > 0 ){
-		db = 0;
-		for( i=0; i< work_counter; i++){
-			current+=current_array[i];
-			db+=db_array[i];
-		}
-		db = db/work_counter;
-		current = current/work_counter;
-		
-	}
-	
-	
-	//TODO set led status
-	if( work_counter> 0 &&  current < g_config.current_max  && current > g_config.current_min && db < g_config.db_max){
-		led_on(LED_PASS_ID);
-		led_off(LED_VOICE_ERROR_ID);
-		led_off(LED_CURRENT_ERROR_ID);
-		led_off(LED_ERROR_ID);
-		userStation_report( db, current , work_counter, 0);
-	}else {
-		led_off(LED_PASS_ID);
-		if( work_counter > 0 ){
-			error = 0;
-			if( current >= g_config.current_max || current <= g_config.current_min ){
-				error |= USER_RES_CURRENT_FALSE_FLAG;
-				led_on(LED_CURRENT_ERROR_ID);
-			}
-			if( db >= g_config.db_max ){
-				error |= USER_RES_VOICE_FALSE_FLAG;
-				led_on(LED_VOICE_ERROR_ID);
-			}
-			userStation_report( db, current , work_counter, error);
-		}else{
-			led_on(LED_ERROR_ID);
-			userStation_report( 0, 0 , work_counter, USER_RES_ERROR_FLAG);
-		}
-	}
-	
-	#if USING_MINIMETER
-	miniMeter_stop();
-	#endif
-	
-	//update status
-	led_off(LED_STATUS_ID);
+	Uart_Put(coder->uart, packget, sizeof( packget) );
 }
 
-void server_runtime()
-{	
-	int res;
-	
-	if( 0 == systick_check_timer( &work_timer ) )
-		return ;
-	
-	if( server_collect_over == 1 ) 
-		return ;
-	
-	//has collected enought records
-	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
-		server_collect_over = 1;
-		server_stop();
-		//server_status = 0;
-		return ;
-	}
-	
-	
-	res = 1;
-	
-	//get current by uart
-	if( 0 == service_getCurrent( &current_array[ work_counter ] ) ){
-		_LOG("server_runtime: get current false\n");
-		userStation_log("read current false");
-		res = 0;
-	}
-	
-	//get db
-	db_array[ work_counter ] = get_voice_db();
-	if( db_array[work_counter] < 0 ){
-		_LOG("error: read adc \n");
-		userStation_log("read adc false");
-		res = 0;
-	}
-	if( db_array[work_counter] < g_config.db_min ){
-		_LOG("error: read Noise too low , check connection \n");
-		userStation_log("error: Noise too low");
-		res = 0;
-	}
-
-
-	//update counter
-	if( res == 1 ){
-		userStation_report( db_array[ work_counter ], current_array[ work_counter ], 0, 0 ); 
-		work_counter++;
-	}
-	
-	//will run this func after 100ms
-	systick_init_timer( &work_timer, 20);
-}
-
-void server_event()
+void miniMeter_toggle(miniMeterCoder_t * coder)
 {
-	if( sw_on_tag == 1 ){
-		
-		if( server_status == 0 ){
-			server_start();
-			server_status = 1;
-		}
-		if( server_status == 1 )
-			server_runtime();
-		
-	}else{
-		
-		if( server_status == 1 ){
-			//server_stop();
-			server_status = 0;
-		}
-		
-	}	
+	unsigned char packget[]={0x88,0xAE,0x00,0x11};
+	
+	Uart_Put(coder->uart, packget, sizeof( packget) );
 }
+
+
+
+volatile char currentCali_server_tag = 0;
+volatile float current_sum;
+volatile int	current_counter;
+void currentCali_server_start()
+{
+	miniMeterCoder_clear(&currentMeter );
+	miniMeter_start( &currentMeter );
+	currentCali_server_tag = 1;
+	current_sum=0;
+	current_counter=0;
+}
+
+void currentCali_server_even()
+{
+	float value;
+	
+	if( currentCali_server_tag == 0 ) return;
+	
+	if( 1 == miniMeterCoder_read(&currentMeter, &value) ){
+		current_sum += value;
+		current_counter++;
+	}
+}
+void currentCali_server_stop()
+{
+	miniMeter_stop( &currentMeter );
+	currentCali_server_tag = 0;
+}
+int is_currentCali_server_start()
+{
+	return currentCali_server_tag;
+}
+
+
+
+volatile char voltageCali_server_tag = 0;
+volatile float voltage_sum;
+volatile int	voltage_counter;
+void voltageCali_server_start()
+{
+	miniMeterCoder_clear(&voltageMeter );
+	miniMeter_start( &voltageMeter );
+	voltageCali_server_tag = 1;
+	voltage_sum=0;
+	voltage_counter=0;
+}
+
+void voltageCali_server_even()
+{
+	float value;
+	
+	if( voltageCali_server_tag == 0 ) return;
+	
+	if( 1 == miniMeterCoder_read(&voltageMeter, &value) ){
+		voltage_sum += value;
+		voltage_counter++;
+	}
+}
+void voltageCali_server_stop()
+{
+	voltageCali_server_tag = 0;
+	miniMeter_stop( &voltageMeter );
+}
+int is_voltageCali_server_start()
+{
+	return voltageCali_server_tag;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#define VALVE_S1_ON()				GPIOA->BSRR = GPIO_Pin_7
+#define VALVE_S1_OFF()			GPIOA->BRR = GPIO_Pin_7
+#define VALVE_S2_ON()			GPIOA->BSRR = GPIO_Pin_6
+#define VALVE_S2_OFF()			GPIOA->BRR = GPIO_Pin_6
+#define VALVE_5V_ON()			GPIOA->BSRR = GPIO_Pin_15
+#define VALVE_5V_OFF()			GPIOA->BRR = GPIO_Pin_15
+#define VALVE_COIL_PANEL_ON()			GPIOA->BSRR = GPIO_Pin_1
+#define VALVE_COIL_PANEL_OFF()			GPIOA->BRR = GPIO_Pin_1
+#define VALVE_RECEIVE_PANEL_ON()			GPIOA->BSRR = GPIO_Pin_3
+#define VALVE_RECEIVE_PANEL_OFF()			GPIOA->BRR = GPIO_Pin_3
+
+void valve_init()
+{
+	GPIO_InitTypeDef GPIO_InitStructure;	
+	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_1 | GPIO_Pin_15 | GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+	
+	VALVE_S1_OFF();
+	VALVE_S2_OFF();
+	VALVE_5V_OFF();
+	VALVE_COIL_PANEL_OFF();
+	VALVE_RECEIVE_PANEL_OFF();
+}
+
+
+
+
+
 
 
 
 systick_time_t heart_led_timer;
+BitAction heart_led;
 
 void heart_led_init()
 {
@@ -1259,21 +646,476 @@ void heart_led_init()
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
 	
 	systick_init_timer(&heart_led_timer, 500);
+	heart_led = Bit_RESET;
+	GPIO_WriteBit( GPIOC, GPIO_Pin_13 , heart_led);
 	
 }
 
 void heart_led_even()
 {
-	static BitAction led = Bit_RESET;
+	
 	
 	if( systick_check_timer( &heart_led_timer ) ){
-		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
-		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
-		
-		get_voice_db();
+		heart_led = heart_led==Bit_RESET ? Bit_SET: Bit_RESET ;
+		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , heart_led);
+	}
+}
+
+
+
+volatile int launch_switch;
+volatile int pump_switch;
+
+void Switch_irq_init(void)
+{
+	EXTI_InitTypeDef EXTI_InitStructure;  
+	NVIC_InitTypeDef NVIC_InitStructure;	
+
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource0);
+
+	EXTI_InitStructure.EXTI_Line = EXTI_Line0;    
+	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;//EXTI_Trigger_Rising;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init(&EXTI_InitStructure);
+
+	NVIC_InitStructure.NVIC_IRQChannel = EXTI0_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+	
+	
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource1);
+
+	EXTI_InitStructure.EXTI_Line = EXTI_Line1;    
+	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;//EXTI_Trigger_Rising;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init(&EXTI_InitStructure);
+
+	NVIC_InitStructure.NVIC_IRQChannel = EXTI1_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+	
+	launch_switch = 0;
+	pump_switch = 0;
+	
+}
+
+
+void EXTI0_IRQHandler()
+{
+	launch_switch = launch_switch==0 ?1:0;
+	EXTI_ClearITPendingBit(EXTI_Line0);
+}
+
+void EXTI1_IRQHandler()
+{
+	pump_switch = 1;
+	EXTI_ClearITPendingBit(EXTI_Line1);
+}
+
+
+
+
+
+#define MS_COIL_PANEL_MOVE   1000
+#define MS_RECEIVE_PANEL_MOVE 1000
+#define MS_POWER_OFF_5V  200
+
+enum SERVER_STEP{
+	STEP_IDLE =0,
+	STEP_PULL_DOWM_COIL_PANEL, 
+	STEP_POWER_5V_UP,					
+	STEP_CAIL_CURRENT,					
+	STEP_CHECK_LED_TOGGLE,			
+	STEP_PULL_DOWN_RECEIVE_PANEL, 
+	STEP_CHECK_LED_ON,
+	STEP_CHECK_VOL_CURRENT,
+	STEP_S1_ON,
+	STEP_S2_ON,
+	STEP_CHECK_FINAL_CURRENT,
+	STEP_FINISH
+};
+
+volatile enum SERVER_STEP test_step ;
+systick_time_t delay_timer;
+
+
+
+void service_break()
+{	
+	VALVE_5V_OFF();
+	systick_delay_us(1000 );
+	VALVE_RECEIVE_PANEL_OFF();
+	systick_delay_us( MS_RECEIVE_PANEL_MOVE *1000 );
+	VALVE_COIL_PANEL_OFF();
+	systick_delay_us( MS_COIL_PANEL_MOVE *1000 );
+	VALVE_S1_OFF();
+	VALVE_S2_OFF();
+	
+	test_step = STEP_IDLE;
+	systick_init_timer( &delay_timer, 10 );
+}
+
+
+void service_init()
+{
+	VALVE_5V_OFF();
+	systick_delay_ms( MS_POWER_OFF_5V  );
+	VALVE_RECEIVE_PANEL_OFF();
+	systick_delay_ms( MS_RECEIVE_PANEL_MOVE );
+	VALVE_COIL_PANEL_OFF();
+	systick_delay_ms( MS_COIL_PANEL_MOVE );
+	VALVE_S1_OFF();
+	VALVE_S2_OFF();
+	
+	test_step = STEP_IDLE;
+	systick_init_timer( &delay_timer, 10 );
+}
+
+
+void service_even()
+{
+	float value;
+	
+	//break;
+	if( pump_switch == 1 ){
+		service_break();
+		launch_switch = 0;
+		pump_switch = 0;
+	}
+	//stop
+	if( launch_switch == 0  && test_step!= STEP_IDLE){
+		service_init();
 	}
 	
+	if( 0 == systick_check_timer( &delay_timer ) ){
+		return;
+	}
+	
+	switch( test_step ){
+		case STEP_IDLE:{
+			if( launch_switch == 1 ){
+				//start test
+				test_step++;
+			}
+			break;
+		}
+		case STEP_PULL_DOWM_COIL_PANEL:{
+			PASS_LED_OFF();
+			FALSE_LED_OFF();
+			VALVE_COIL_PANEL_ON();
+			systick_init_timer( &delay_timer, MS_COIL_PANEL_MOVE );
+			test_step++;
+			_LOG("******** STEP_PULL_DOWM_COIL_PANEL : Start\n");
+			break;
+		}
+		case STEP_POWER_5V_UP:{
+			VALVE_5V_ON();
+			systick_init_timer( &delay_timer, 1000 );
+			test_step++;
+			_LOG("******** STEP_POWER_5V_UP : Start\n");
+			break;
+		}
+		case STEP_CAIL_CURRENT:{
+			if( !is_currentCali_server_start() ){
+				//start
+				currentCali_server_start();
+				systick_init_timer( &delay_timer, 2000 );
+				_LOG("******** STEP_CAIL_CURRENT Start...\n");
+			}else{
+				//check result
+				currentCali_server_stop();
+				if( current_counter > 0 ){
+					value = current_sum/current_counter;
+					if( value >= 0.0001 && value <= 0.001 ){
+						test_step++;
+						systick_init_timer( &delay_timer, 1);
+						_LOG("STEP_CAIL_CURRENT OK\n");
+						break;
+					}
+				}else{
+					_LOG("STEP_CAIL_CURRENT : no current data\n");
+				}
+				_LOG("STEP_CAIL_CURRENT : false\n");
+				FALSE_LED_ON();
+				test_step = STEP_FINISH;
+				systick_init_timer( &delay_timer, 100 );
+			}
+			break;
+		}
+		case STEP_CHECK_LED_TOGGLE:{
+			if( !is_check_led_toggle_server_start() ){
+				check_led_toggle_server_init();
+				systick_init_timer( &delay_timer, 4000 );
+				_LOG("******** STEP_CHECK_LED_TOGGLE : Start\n");
+			}else{
+				check_led_toggle_server_stop();
+				if( check_led_toggle_counter == 3 ){
+					test_step++;
+					systick_init_timer( &delay_timer, 1);
+					_LOG("STEP_CHECK_LED_TOGGLE : OK\n");
+				}else{
+					_LOG("STEP_CHECK_LED_TOGGLE : false\n");
+					FALSE_LED_ON();
+					test_step = STEP_FINISH;
+					systick_init_timer( &delay_timer, 100 );
+				}
+			}
+			break;
+		}
+		case STEP_PULL_DOWN_RECEIVE_PANEL:{ // place the receive 
+			VALVE_RECEIVE_PANEL_ON();
+			systick_init_timer( &delay_timer, MS_RECEIVE_PANEL_MOVE + 500); // 500 for led light
+			test_step++;
+			_LOG("******** STEP_PULL_DOWN_RECEIVE_PANEL : Start\n");
+			break;
+		}
 		
+		case STEP_CHECK_LED_ON:{ // 2 white led is on , wait at least 3s before next step 
+			if( 1 == is_white1_led_on() && 1 == is_white2_led_on() && 0==is_red_led_on() ){
+				test_step++;
+				systick_init_timer( &delay_timer, 3000);
+				_LOG("******** STEP_CHECK_LED_ON : OK\n");
+			}else{
+				_LOG("STEP_CHECK_LED_ON : false\n");
+				FALSE_LED_ON();
+				test_step = STEP_FINISH;
+				systick_init_timer( &delay_timer, 100 );
+			}
+			break;
+		}
+		case STEP_CHECK_VOL_CURRENT:{  // V=[5,5.5] A= [1.4,1.7]
+			if( !is_currentCali_server_start() && !is_voltageCali_server_start() ){
+				currentCali_server_start();
+				voltageCali_server_start();
+				systick_init_timer( &delay_timer, 2000 );
+				_LOG("******** STEP_CHECK_VOL_CURRENT : Start\n");
+			}else{
+				voltageCali_server_stop();
+				currentCali_server_stop();
+				if( current_counter > 0 && voltage_counter > 0 ){
+					value = current_sum/current_counter;
+					if( value > 1.7 || value < 1.4 ){
+						_LOG("STEP_CHECK_VOL_CURRENT : current[1.4,1.7] false (%fA)\n",value);
+					}else{
+						value = voltage_sum/voltage_counter;
+						if( value > 5.5 || value < 5.0 ){
+							_LOG("STEP_CHECK_VOL_CURRENT : voltage[5.0,5.5] false (%fV)\n",value);
+						}else{
+							test_step++;
+							systick_init_timer( &delay_timer, 100 );
+							_LOG("STEP_CHECK_VOL_CURRENT : OK\n");
+							break;
+						}
+					}
+				}else{
+					_LOG("STEP_CHECK_VOL_CURRENT : leak data  current(%d),voltage(%d)\n",current_counter,voltage_counter);
+				}
+				_LOG("STEP_CHECK_VOL_CURRENT : false\n");
+				FALSE_LED_ON();
+				test_step = STEP_FINISH;
+				systick_init_timer( &delay_timer, 100 );
+			}
+			break;
+		}
+		case STEP_S1_ON:{ // red led is on 
+			if( !is_check_led_toggle_server_start() ){
+				VALVE_S1_ON();
+				check_led_toggle_server_init();
+				systick_init_timer( &delay_timer, 500 );
+				_LOG("******** STEP_S1_ON : Start\n");
+			}else{
+				check_led_toggle_server_stop();
+				if( is_red_led_on() ){
+					test_step++;
+					_LOG("STEP_S1_ON : OK\n");
+				}else{
+					_LOG("STEP_S1_ON : false\n");
+					FALSE_LED_ON();
+					test_step = STEP_FINISH;
+				}
+				VALVE_S1_OFF();
+				systick_init_timer( &delay_timer, 100 );
+			}
+			break;
+		}	
+		case STEP_S2_ON:{ // all leds are off, current= [0.1mA,1mA]
+			if( !is_currentCali_server_start() ){
+				//start
+				VALVE_S2_ON();
+				currentCali_server_start();
+				systick_init_timer( &delay_timer, 2000 );
+				_LOG("******** STEP_S2_ON : Start\n");
+			}else{
+				//check result
+				currentCali_server_stop();
+				if( is_red_led_on() || is_white1_led_on() || is_white2_led_on() ){
+					_LOG("STEP_S2_ON : false,  led is light\n");
+				}else{
+					if( current_counter <=  0 ){
+						_LOG("STEP_S2_ON : no current data\n");
+					}else{
+						value = current_sum/current_counter;
+						if( value >= 0.0001 && value <= 0.001 ){
+							test_step++;
+							systick_init_timer( &delay_timer, 500); // 500ms for switch origan status for next test
+							VALVE_S2_OFF();
+							_LOG("STEP_S2_ON : OK\n");
+							break;
+						}else{
+							_LOG("STEP_S2_ON :current[0.0001,0.001] false  %fA\n",value);
+						}
+						
+					}
+				}
+				_LOG("STEP_S2_ON : false\n");
+				FALSE_LED_ON();
+				test_step = STEP_FINISH;
+				systick_init_timer( &delay_timer, 100 );
+				VALVE_S2_OFF();
+			}
+			break;
+		}
+		case STEP_CHECK_FINAL_CURRENT:{  //all leds are off(3s内), current= [0.1mA,1mA]
+			if( !is_currentCali_server_start() ){
+				currentCali_server_start();
+				systick_init_timer( &delay_timer, 2500 );
+				_LOG("******** STEP_CHECK_FINAL_CURRENT: Start\n");
+			}else{
+				//check result
+				currentCali_server_stop();
+				if( is_red_led_on() || is_white1_led_on() || is_white2_led_on() ){
+					_LOG("STEP_CHECK_FINAL_CURRENT :  led is on \n");
+				}else{
+					if( current_counter > 0 ){
+						value = current_sum/current_counter;
+						if( value >= 0.0001 && value <= 0.001 ){
+							test_step++;
+							systick_init_timer( &delay_timer, 1);
+							PASS_LED_ON();
+							_LOG("STEP_CHECK_FINAL_CURRENT: OK\n");
+							break;
+						}else{
+							_LOG("STEP_CHECK_FINAL_CURRENT : current[0.0001,0.001] false  %fA\n",value);
+						}
+					}else{
+						_LOG("STEP_CHECK_FINAL_CURRENT : no current data\n");
+					}
+				}
+				_LOG("STEP_CHECK_FINAL_CURRENT : false\n");
+				FALSE_LED_ON();
+				test_step = STEP_FINISH;
+				systick_init_timer( &delay_timer, 100 );
+			}
+			break;
+		}		
+		case STEP_FINISH:{
+			_LOG("STEP_FINISH: finish\n");
+			service_init();
+			launch_switch = 0;
+			break;
+		}
+		default:{
+			service_init();
+			launch_switch = 0;
+			_LOG("Server: ERROR ! get a unknow setp\n");
+			break;
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+void cmd_even()
+{
+	static char buffer[4]={0};
+	static char index = 0;
+	
+	//if( Uart_Get( CONSOLE_UART , (unsigned char*) &buffer[index], 1 ) ){
+	if( USB_RxRead((unsigned char*) &buffer[index], 1 ) ){
+		if( buffer[index] == ';' ){
+			if( index == 2 ){
+				switch( buffer[index -2 ]){
+					case '1':
+						if( buffer[index-1]== '1' ){
+							VALVE_S1_ON();
+							_LOG("1-S1 ON \n");
+						}else{
+							VALVE_S1_OFF();
+							_LOG("1-S1 OFF \n");
+						}
+						break;
+					case '2':
+						if( buffer[index-1]== '1' ){
+							VALVE_S2_ON();
+							_LOG("2-S2 ON \n");
+						}else{
+							VALVE_S2_OFF();
+							_LOG("2-S2 OFF \n");
+						}
+						break;								
+					case '3':
+						if( buffer[index-1]== '1' ){
+							VALVE_5V_ON();
+							_LOG("3-5V ON \n");
+						}else{
+							VALVE_5V_OFF();
+							_LOG("3-5V OFF \n");
+						}
+						break;		
+
+						
+					case '4':
+						if( buffer[index-1]== '1' ){
+							VALVE_COIL_PANEL_ON();
+							_LOG("4-VALVE_COIL_PANEL ON \n");
+						}else{
+							VALVE_COIL_PANEL_OFF();
+							_LOG("4-VALVE_COIL_PANEL OFF \n");
+						}
+						break;						
+					case '5':
+						if( buffer[index-1]== '1' ){
+							VALVE_RECEIVE_PANEL_ON();
+							_LOG("5-VALVE_RECEIVE_PANEL ON \n");
+						}else{
+							VALVE_RECEIVE_PANEL_OFF();
+							_LOG("5-VALVE_RECEIVE_PANEL OFF \n");
+						}
+						break;
+					case '6':
+							voltageCali_server_start();
+							currentCali_server_start();
+					break;
+					case '7':
+							if( buffer[index-1] == 'r') {RUNING_LEN_ON();}
+							else if(buffer[index-1] == 'p') {PASS_LED_ON();}
+							else if(buffer[index-1] == 'f') {FALSE_LED_ON();}
+							break;
+					case '8':
+							if( buffer[index-1] == 'r') {RUNING_LEN_OFF();}
+							else if(buffer[index-1] == 'p') {PASS_LED_OFF();}
+							else if(buffer[index-1] == 'f') {FALSE_LED_OFF();}
+					break;
+				}
+			}
+			index = 0;
+			return;
+		}
+		index++;
+		index = index % 4;
+	}
 }
 
 
@@ -1281,41 +1123,48 @@ void heart_led_even()
 
 void app_init()
 {
+	valve_init();
+	
 	Uart_init();
 
 #if BOARD_HAS_IAP
 	if( IAP_PORT_USB == 1 ) iap_init_in_usb();
-	else if( IAP_PORT_CAN1 == 1 )iap_init_in_can1();
-	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
 #endif
-
 	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
-	//console_init( CONSOLE_USB_TYPE ,NULL );
+	console_init( CONSOLE_USB_TYPE ,NULL );
 	
 
-	ADC_Configuration ();
-	led_pin_config();
 	heart_led_init();
-	switch_det_config();
-	userStation_init();
-	server_init();
-	config_init();
-	
-	//systick_delay_us(1000000);
-	//miniMeter_start();
+	LED_Detection_init();
+	led_pin_config();
+	miniMeter_init();
+	Switch_irq_init();
+	service_init();
 
 }
 
 
 void app_event()
 {
-	#if 1
-	switch_det_event();
-	server_event();
-	userStation_listen_even();
+	check_led_toggle_server_event();
+	currentCali_server_even();
+	voltageCali_server_even();
 	heart_led_even();
-	//miniMeter_test_even();
-	#endif
+	service_even();
+	
+	cmd_even();
+	/*
+	if( voltage_counter >= 6 ){
+		voltageCali_server_stop();
+		_LOG("Vmeter=%f\n",voltage_sum/voltage_counter);
+		voltageCali_server_start();
+	}
+	if( current_counter >= 6 ){
+		currentCali_server_stop();
+		_LOG("Ameter=%f\n",current_sum/current_counter);
+		currentCali_server_start();
+	}
+	*/
 }
 
 

@@ -21,6 +21,6 @@ void systick_event(void);
 unsigned int systick_get_ms(void);
 int systick_check_timer(systick_time_t *time_t);
 int systick_init_timer(systick_time_t *time_t, int ms);
-
+void systick_delay_ms(u32 ms);
 
 #endif
