@@ -51,37 +51,7 @@ void Uart_init()
 	GPIO_Init(GPIOA, &GPIO_InitStructure); 
 
 	Uart_Configuration (&Uart1, USART1, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
-	
-/*
-	//USART2								  
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-    										  
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_Init(GPIOA, &GPIO_InitStructure); 
-	
-	Uart_Configuration (&Uart2, USART2, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 
-	//USART3								  
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
-    										  
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_Init(GPIOB, &GPIO_InitStructure); 
-	
-	Uart_Configuration (&Uart3, USART3, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
-*/
-	
 	//swd
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
@@ -93,31 +63,26 @@ void Uart_init()
 
 
 #define MAX_FREQ 1000
-#define LIMIT_MAX_SPEED 60 // round/min
-#define LIMIT_MAX_FREQ 400 // LIMIT_MAX_SPEED / 60 *400
+#define LIMIT_MAX_SPEED 120 // round/min
+#define LIMIT_MAX_FREQ 800 // LIMIT_MAX_SPEED / 60 *400
 #define LIMIT_MIN_FREQ 1
 #define ONE_ROUND_FREQ 400  //xi feng 
 #define LIMIT_MAX_ROUND_COUNT 99
 #define LIMIT_MIN_ROUND_COUNT 1
-#define RATE_MAX_PULSE ONE_ROUND_FREQ // 用多少个pulse来做加减速
-#define RATE_MIN_PULSE 0
-#define RATE_FREQ 2
+#define RATE_FREQ 50
 #define MOTOR_LOOP_INTERVAL_MS 10
 #define MOTOR1_ID 1
 #define MOTOR2_ID 2
-#define MOTOR_DIRECTION_RIGHT Bit_SET
-#define MOTOR_DIRECTION_LEFT Bit_RESET
+#define MOTOR_DIRECTION_RIGHT 	Bit_RESET
+#define MOTOR_DIRECTION_LEFT 		Bit_SET
 #define MOTOR_EN_ON  Bit_RESET
 #define MOTOR_EN_OFF Bit_SET
 
 struct motor {
 	unsigned short expect_speed;
 	unsigned short expect_freq;
-	unsigned short expect_circle_count;
 	unsigned short current_freq;
-	unsigned short current_circle_count;
-	unsigned char direction;
-	unsigned char id;
+	unsigned short id;
 	unsigned int   current_pulse;
 	unsigned int   expect_pulse;
 	unsigned int   rate_reduce_pulse_point;
@@ -235,7 +200,7 @@ void motor_hw_init(volatile struct motor *motorx)
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
 	GPIO_Init(motorx->dGPIOx, &GPIO_InitStructure);
-	motor_set_direct( motorx, motorx->direction);
+	//motor_set_direct( motorx, motorx->direction);
 	
 	motor_rate(motorx, motorx->expect_freq);
 }
@@ -329,8 +294,6 @@ void motor_init()
 	motor1.expect_speed = 0;
 	motor1.expect_freq = 0;
 	motor1.current_freq = 0;
-	motor1.expect_circle_count = 0;
-	motor1.direction = MOTOR_DIRECTION_RIGHT;
 	motor1.expect_pulse = 0;
 	motor1.current_pulse = 0;
 	//pwm pin
@@ -352,8 +315,6 @@ void motor_init()
 	motor2.expect_speed = 0;
 	motor2.expect_freq = 0;
 	motor2.current_freq = 0;
-	motor2.expect_circle_count = 0;
-	motor2.direction = MOTOR_DIRECTION_RIGHT;
 	motor2.expect_pulse = 0;
 	motor2.current_pulse = 0;
 	//pwm pin
@@ -401,7 +362,7 @@ void motor_loop()
 }
 
 
-void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsigned int expect_pulse )
+void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsigned int expect_pulse , unsigned char direction)
 {
 	//加速度是  RATE_FREQ/MOTOR_LOOP_INTERVAL_MS
 	// s = v0 * t + 0.5* a*t*t ; t= (v1-v0)/RATE_FREQ/MOTOR_LOOP_INTERVAL_MS
@@ -428,10 +389,10 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	}
 	
 	
-	accel = 50;//ref_accel * expect_freq/ref_freq ; //  根据速度与参考速度的比例 ，调整加速时间
+	accel = RATE_FREQ;//ref_accel * expect_freq/ref_freq ; //  根据速度与参考速度的比例 ，调整加速时间
 	pulse = expect_freq*expect_freq/2/accel;
-	if( pulse*2 >= expect_pulse ){
-		motorx->rate_reduce_pulse_point = expect_pulse- expect_freq*expect_freq/2/accel;
+	if( (pulse*2) < expect_pulse ){
+		motorx->rate_reduce_pulse_point = expect_pulse- pulse;
 	}else{
 		motorx->rate_reduce_pulse_point = expect_pulse/2;
 	}
@@ -445,7 +406,9 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	motorx->current_pulse = 0;
 	motorx->current_freq = 10;
 	
-	motor_set_direct( motorx, motorx->direction);
+	_LOG("expect_pulse=%d, accel=%f, accel_pulse=%d,rate_reduce_pulse=%d, expect_freq = %d\n", expect_pulse, accel,pulse, motorx->rate_reduce_pulse_point, expect_freq);
+	
+	motor_set_direct( motorx, direction);
 	motor_en( motorx, MOTOR_EN_ON);
 	systick_delay_us(500000);
 }
@@ -597,16 +560,41 @@ void config_auto_save_even()
 #define M1_SPEED_DATA_Y 11 
 #define M1_ROUND_DATA_X 0
 #define M1_ROUND_DATA_Y 6
+#define M1_DERECTION_X	0
+#define M1_DERECTION_Y	15
 
 #define M2_SPEED_DATA_X 1
 #define M2_SPEED_DATA_Y 11 
 #define M2_ROUND_DATA_X 1
 #define M2_ROUND_DATA_Y 6
+#define M2_DERECTION_X	1
+#define M2_DERECTION_Y	15
 
 #define lcd_update_m1_round( )		_LOG( "r1=%d\n",g_config.motor1_circle_count);lcd_display_number( M1_ROUND_DATA_X , M1_ROUND_DATA_Y , g_config.motor1_circle_count, 2 )
 #define lcd_update_m1_speed( )		_LOG( "s1=%d\n",g_config.motor1_speed);lcd_display_number( M1_SPEED_DATA_X, M1_SPEED_DATA_Y , g_config.motor1_speed, 3)
 #define lcd_update_m2_round( )		_LOG( "r2=%d\n",g_config.motor2_circle_count);lcd_display_number( M2_ROUND_DATA_X , M2_ROUND_DATA_Y , g_config.motor2_circle_count, 2)
 #define lcd_update_m2_speed( )		_LOG( "s2=%d\n",g_config.motor2_speed);lcd_display_number( M2_SPEED_DATA_X, M2_SPEED_DATA_Y , g_config.motor2_speed, 3 )
+void lcd_update_m1_direction()
+{
+	if( g_config.motor1_direction==MOTOR_DIRECTION_RIGHT ){
+		_LOG( "d1=right\n"); 
+		LCD1602_Write(M1_DERECTION_X, M1_DERECTION_Y, 'R');
+	}else{
+		_LOG( "d1=left\n"); 
+		LCD1602_Write(M1_DERECTION_X, M1_DERECTION_Y, 'L');
+	}
+}
+
+void lcd_update_m2_direction()
+{
+	if( g_config.motor2_direction==MOTOR_DIRECTION_RIGHT ){
+		_LOG( "d2=right\n"); 
+		LCD1602_Write(M2_DERECTION_X, M2_DERECTION_Y, 'R');
+	}else{
+		_LOG( "d2=left\n"); 
+		LCD1602_Write(M2_DERECTION_X, M2_DERECTION_Y, 'L');
+	}
+}
 
 unsigned char lcd_data[2][16] = {
 	{'M','1',' ',' ','R',':',' ',' ',' ','S',':',' ',' ',' ',' ',' '},
@@ -636,14 +624,26 @@ void lcd_update_mouse()
 			break;
 			
 		case 2 :
-			LCD1602_SetMouse( M2_ROUND_DATA_X, M2_ROUND_DATA_Y+1);
+			LCD1602_SetMouse( M1_DERECTION_X, M1_DERECTION_Y);
 			break;
 			
 		case 3:
+			LCD1602_SetMouse( M2_ROUND_DATA_X, M2_ROUND_DATA_Y+1);
+			break;
+		case 4:
 			LCD1602_SetMouse( M2_SPEED_DATA_X, M2_SPEED_DATA_Y+2);
+			break;
+		
+		case 5:
+			LCD1602_SetMouse( M2_DERECTION_X, M2_DERECTION_Y);
+			break;
+		
+		default:
+			current_point = 0;
 			break;
 	}
 }
+
 
 void lcd_init()
 {
@@ -661,6 +661,9 @@ void lcd_init()
 		lcd_update_m2_round();
 		lcd_update_m2_speed();
 	}
+
+	lcd_update_m2_direction();
+	lcd_update_m1_direction();
 	
 	lcd_update_mouse();
 }
@@ -688,19 +691,30 @@ void round_add_key_toggle_handler()
 			break;
 			
 		case 2 :
+			g_config.motor1_direction = g_config.motor1_direction == MOTOR_DIRECTION_LEFT ? MOTOR_DIRECTION_RIGHT:MOTOR_DIRECTION_LEFT;
+			lcd_update_m1_direction();
+			g_config.config_avaliable = 2;
+			break;
+			
+		case 3:
 			if( g_config.motor2_circle_count < LIMIT_MAX_ROUND_COUNT ){
 				g_config.motor2_circle_count++;
 				g_config.config_avaliable = 2;
 			}
 			lcd_update_m2_round();
 			break;
-			
-		case 3:
+		case 4:
 			g_config.motor2_speed = g_config.motor2_speed+6 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor2_speed+6 ;
 			g_config.config_avaliable = 2;
 			lcd_update_m2_speed();
 			break;
-			
+		
+		case 5:
+			g_config.motor2_direction = g_config.motor2_direction == MOTOR_DIRECTION_LEFT ? MOTOR_DIRECTION_RIGHT:MOTOR_DIRECTION_LEFT;
+			lcd_update_m2_direction();
+			g_config.config_avaliable = 2;
+			break;
+		
 		default:
 			current_point = 0;
 			break;
@@ -725,6 +739,12 @@ void round_reduce_key_toggle_handler()
 			break;
 			
 		case 2 :
+			g_config.motor1_direction = g_config.motor1_direction == MOTOR_DIRECTION_LEFT ? MOTOR_DIRECTION_RIGHT:MOTOR_DIRECTION_LEFT;
+			lcd_update_m1_direction();
+			g_config.config_avaliable = 2;
+			break;
+			
+		case 3:
 			if( g_config.motor2_circle_count > 0 ){
 				g_config.motor2_circle_count--;
 				g_config.config_avaliable = 2;
@@ -732,12 +752,18 @@ void round_reduce_key_toggle_handler()
 			lcd_update_m2_round();
 			break;
 			
-		case 3:
+		case 4:
 			g_config.motor2_speed = g_config.motor2_speed-6 > 0 ? g_config.motor2_speed-6 : 0 ;
 			g_config.config_avaliable = 2;
 			lcd_update_m2_speed();
 			break;
-			
+		
+		case 5:
+			g_config.motor2_direction = g_config.motor2_direction == MOTOR_DIRECTION_LEFT ? MOTOR_DIRECTION_RIGHT:MOTOR_DIRECTION_LEFT;
+			lcd_update_m2_direction();
+			g_config.config_avaliable = 2;
+			break;
+		
 		default:
 			current_point = 0;
 			break;
@@ -754,9 +780,9 @@ void start_key_press_handler()
 	
 	if( motor1.current_pulse >=  motor1.expect_pulse  && motor2.current_pulse >=  motor2.expect_pulse ){
 		_LOG("start motor1 speed=%d, round=%d\n", g_config.motor1_speed , g_config.motor1_circle_count * ONE_ROUND_FREQ );
-		motor_start( &motor1, g_config.motor1_speed * ONE_ROUND_FREQ /60 , g_config.motor1_circle_count * ONE_ROUND_FREQ );
+		motor_start( &motor1, g_config.motor1_speed * ONE_ROUND_FREQ /60 , g_config.motor1_circle_count * ONE_ROUND_FREQ , g_config.motor1_direction);
 		_LOG("start motor2 speed=%d, round=%d\n", g_config.motor2_speed , g_config.motor2_circle_count * ONE_ROUND_FREQ );
-		motor_start( &motor2, g_config.motor2_speed * ONE_ROUND_FREQ /60 , g_config.motor2_circle_count * ONE_ROUND_FREQ );
+		motor_start( &motor2, g_config.motor2_speed * ONE_ROUND_FREQ /60 , g_config.motor2_circle_count * ONE_ROUND_FREQ , g_config.motor2_direction);
 	}else{ 
 		_LOG("stop motor1\n");
 		motor_stop( &motor1 );
@@ -777,7 +803,7 @@ void start_key_press_handler()
 void switch_key_press_handler()
 {
 	current_point++;
-	current_point %= 4;
+	current_point %= 6;
 	lcd_update_mouse();
 
 }
