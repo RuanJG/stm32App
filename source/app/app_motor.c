@@ -62,14 +62,141 @@ void Uart_init()
 
 
 
+
+
+#define ADC_SAMPLE_COUNT 32  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
+#define ADC_SAMPLE_CHANNEL_COUNT 1
+static unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
+volatile int adc_updated;
+
+void ADC_Configuration ()
+{										 
+	ADC_InitTypeDef ADC_InitStructure;
+	DMA_InitTypeDef DMA_InitStructure;
+	GPIO_InitTypeDef GPIO_InitStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);	
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
+	
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);	
+
+	
+	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
+	ADC_InitStructure.ADC_ScanConvMode = ENABLE;
+	ADC_InitStructure.ADC_ContinuousConvMode = ENABLE;
+	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
+	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_NbrOfChannel = ADC_SAMPLE_CHANNEL_COUNT;
+	ADC_Init(ADC1, &ADC_InitStructure);
+	
+	// 239.5 sampleTime => (239.5+12.5)/12M = 21us; 21*ADC_SAMPLE_COUNT * 3 = ADC_SAMPLE_COUNT * 63us = 1.890ms each group
+	// 71.5 smapleTime => 7us; 7us*ADC_SAMPLE_COUNT*3 = ADC_SAMPLE_COUNT* 21us = 0.630 ms 
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_0, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
+ 
+	// set ADC channel for temperature sensor
+	//ADC_TempSensorVrefintCmd(ENABLE);
+	
+	ADC_DMACmd(ADC1, ENABLE);  
+	ADC_Cmd(ADC1, ENABLE);
+ 
+	ADC_ResetCalibration(ADC1);
+	while(ADC_GetResetCalibrationStatus(ADC1));
+
+	ADC_StartCalibration(ADC1);
+	while(ADC_GetCalibrationStatus(ADC1));
+ 	ADC_SoftwareStartConvCmd(ADC1, ENABLE);
+
+	
+	DMA_DeInit(DMA1_Channel1);
+	DMA_InitStructure.DMA_PeripheralBaseAddr = (unsigned int)&(ADC1->DR);	
+	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
+	DMA_InitStructure.DMA_BufferSize = ADC_SAMPLE_CHANNEL_COUNT*ADC_SAMPLE_COUNT;
+	DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+	DMA_InitStructure.DMA_MemoryBaseAddr = (unsigned int)&escADCConvert;
+	DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+	DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
+	DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
+	DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
+	DMA_InitStructure.DMA_Priority = DMA_Priority_High;
+	DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
+
+	DMA_Init(DMA1_Channel1, &DMA_InitStructure);
+	DMA_ITConfig(DMA1_Channel1, DMA_IT_TC,ENABLE);
+	DMA_Cmd(DMA1_Channel1, ENABLE);
+
+
+  /* Enable DMA channel1 IRQ Channel */
+	NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel1_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_DAM1_IRQ_PREPRIORITY;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_DAM1_IRQ_SUBPRIORITY;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+	
+	adc_updated = 0;
+
+}
+
+void DMA1_Channel1_IRQHandler(void)
+{
+ if(DMA_GetITStatus(DMA1_IT_TC1))
+ {
+	 adc_updated = 1;
+	 DMA_ClearITPendingBit(DMA1_IT_GL1);
+ }
+}
+
+
+unsigned short Cali_Adc_Value()
+{
+	int i;
+	u32 sensor = 0; 	
+	for(i=0;i<ADC_SAMPLE_COUNT;i++)
+	{
+		sensor += escADCConvert[i][0];
+	}
+	sensor = sensor>>5;
+	return sensor;
+}
+
+
+
+
+#define ACCEL_MAX 100
+#define ACCEL_MIN 0
+volatile int adc_accel;
+int accel_check_even()
+{
+	int accel;
+	
+	if( adc_updated == 0 ){
+		return adc_accel;
+	}
+	accel = Cali_Adc_Value();
+	_LOG("adc=%d\n",accel);
+	accel = accel*3300/4096;
+	adc_accel = (ACCEL_MAX - ACCEL_MIN)*accel/ (3300/2);
+	_LOG("accel=%d\n",adc_accel);
+}
+
+
+
+
+
 #define MAX_FREQ 1000
-#define LIMIT_MAX_SPEED 120 // round/min
-#define LIMIT_MAX_FREQ 800 // LIMIT_MAX_SPEED / 60 *400
+#define LIMIT_MAX_SPEED 180 // round/min
+#define LIMIT_MAX_FREQ 1200 // LIMIT_MAX_SPEED / 60 *400
 #define LIMIT_MIN_FREQ 1
 #define ONE_ROUND_FREQ 400  //xi feng 
 #define LIMIT_MAX_ROUND_COUNT 99
 #define LIMIT_MIN_ROUND_COUNT 1
-#define RATE_FREQ 50
+#define RATE_FREQ 300
 #define MOTOR_LOOP_INTERVAL_MS 10
 #define MOTOR1_ID 1
 #define MOTOR2_ID 2
@@ -77,6 +204,9 @@ void Uart_init()
 #define MOTOR_DIRECTION_LEFT 		Bit_SET
 #define MOTOR_EN_ON  Bit_RESET
 #define MOTOR_EN_OFF Bit_SET
+
+#define DERATE_ACCLE 400
+float deaccle;
 
 struct motor {
 	unsigned short expect_speed;
@@ -262,14 +392,22 @@ void motor_rate_check_even( volatile struct motor *motorx )
 	
 	// add or reduce speed
 	exfreq = motorx->expect_freq;
+
+	if( motorx->current_freq < exfreq )
+	{
+		
 	motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
 	freq = motorx->accel; // 去小数
 	motorx->accel -= freq;
-	if( motorx->current_freq < exfreq )
-	{
+		
 		freq += motorx->current_freq;// add rate
 		freq = (freq < exfreq) ? freq: exfreq;
 	}else{
+		
+	motorx->accel += (deaccle *MOTOR_LOOP_INTERVAL_MS) ;
+	freq = motorx->accel; // 去小数
+	motorx->accel -= freq;
+		
 		freq = motorx->current_freq - freq;// reduce rate
 		freq = (freq >= exfreq) ? freq: exfreq;
 	}
@@ -389,15 +527,17 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	}
 	
 	
-	accel = RATE_FREQ;//ref_accel * expect_freq/ref_freq ; //  根据速度与参考速度的比例 ，调整加速时间
-	pulse = expect_freq*expect_freq/2/accel;
+	accel = RATE_FREQ;//RATE_FREQ * expect_freq /120; //  根据速度与参考速度的比例 ，调整加速时间 
+	//accel = accel_check_even();
+	deaccle = (float)DERATE_ACCLE/1000;
+	pulse = expect_freq*expect_freq/2/(DERATE_ACCLE);
 	if( (pulse*2) < expect_pulse ){
 		motorx->rate_reduce_pulse_point = expect_pulse- pulse;
 	}else{
 		motorx->rate_reduce_pulse_point = expect_pulse/2;
 	}
 	
-	motorx->rate_reduce_expect_freq = 10;
+	motorx->rate_reduce_expect_freq = 30;//10;
 	motorx->accelerate_freq = accel/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_FREQ;
 	motorx->accel = 0;
 	
@@ -424,7 +564,8 @@ void motor_stop(volatile struct motor *motorx)
 	
 	//goto the reduce rate state
 	if( motorx->current_pulse < motorx->rate_reduce_pulse_point ){
-		pulse = motorx->current_freq *motorx->current_freq/2/(motorx->accelerate_freq*1000);
+		deaccle = 0.7;
+		pulse = motorx->current_freq *motorx->current_freq/2/(deaccle*1000);
 		motorx->current_pulse = 1;
 		motorx->expect_pulse = pulse;
 		motorx->rate_reduce_pulse_point = 0;
@@ -685,7 +826,7 @@ void round_add_key_toggle_handler()
 			break;
 			
 		case 1:
-			g_config.motor1_speed = g_config.motor1_speed+6 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor1_speed+6 ;
+			g_config.motor1_speed = g_config.motor1_speed+2 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor1_speed+2 ;
 			g_config.config_avaliable = 2;
 			lcd_update_m1_speed();
 			break;
@@ -704,7 +845,7 @@ void round_add_key_toggle_handler()
 			lcd_update_m2_round();
 			break;
 		case 4:
-			g_config.motor2_speed = g_config.motor2_speed+6 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor2_speed+6 ;
+			g_config.motor2_speed = g_config.motor2_speed+2 > LIMIT_MAX_SPEED ? LIMIT_MAX_SPEED: g_config.motor2_speed+2 ;
 			g_config.config_avaliable = 2;
 			lcd_update_m2_speed();
 			break;
@@ -733,7 +874,7 @@ void round_reduce_key_toggle_handler()
 			break;
 			
 		case 1:
-			g_config.motor1_speed = g_config.motor1_speed-6 > 0 ? g_config.motor1_speed-6 : 0 ;
+			g_config.motor1_speed = g_config.motor1_speed-2 > 0 ? g_config.motor1_speed-2 : 0 ;
 			g_config.config_avaliable = 2;
 			lcd_update_m1_speed();
 			break;
@@ -753,7 +894,7 @@ void round_reduce_key_toggle_handler()
 			break;
 			
 		case 4:
-			g_config.motor2_speed = g_config.motor2_speed-6 > 0 ? g_config.motor2_speed-6 : 0 ;
+			g_config.motor2_speed = g_config.motor2_speed-2 > 0 ? g_config.motor2_speed-2 : 0 ;
 			g_config.config_avaliable = 2;
 			lcd_update_m2_speed();
 			break;
@@ -846,106 +987,12 @@ void switch_even()
 
 
 
-#define ADC_SAMPLE_COUNT 32  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
-#define ADC_SAMPLE_CHANNEL_COUNT 1
-static unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
-volatile int adc_updated;
-
-void ADC_Configuration ()
-{										 
-	ADC_InitTypeDef ADC_InitStructure;
-	DMA_InitTypeDef DMA_InitStructure;
-	GPIO_InitTypeDef GPIO_InitStructure;
-	NVIC_InitTypeDef NVIC_InitStructure;
-
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);	
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
-	
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);	
-
-	
-	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
-	ADC_InitStructure.ADC_ScanConvMode = ENABLE;
-	ADC_InitStructure.ADC_ContinuousConvMode = ENABLE;
-	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
-	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
-	ADC_InitStructure.ADC_NbrOfChannel = ADC_SAMPLE_CHANNEL_COUNT;
-	ADC_Init(ADC1, &ADC_InitStructure);
-	
-	// 239.5 sampleTime => (239.5+12.5)/12M = 21us; 21*ADC_SAMPLE_COUNT * 3 = ADC_SAMPLE_COUNT * 63us = 1.890ms each group
-	// 71.5 smapleTime => 7us; 7us*ADC_SAMPLE_COUNT*3 = ADC_SAMPLE_COUNT* 21us = 0.630 ms 
-	ADC_RegularChannelConfig(ADC1, ADC_Channel_7, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
- 
-	// set ADC channel for temperature sensor
-	//ADC_TempSensorVrefintCmd(ENABLE);
-	
-	ADC_DMACmd(ADC1, ENABLE);  
-	ADC_Cmd(ADC1, ENABLE);
- 
-	ADC_ResetCalibration(ADC1);
-	while(ADC_GetResetCalibrationStatus(ADC1));
-
-	ADC_StartCalibration(ADC1);
-	while(ADC_GetCalibrationStatus(ADC1));
- 	ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-
-	
-	DMA_DeInit(DMA1_Channel1);
-	DMA_InitStructure.DMA_PeripheralBaseAddr = (unsigned int)&(ADC1->DR);	
-	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
-	DMA_InitStructure.DMA_BufferSize = ADC_SAMPLE_CHANNEL_COUNT*ADC_SAMPLE_COUNT;
-	DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-	DMA_InitStructure.DMA_MemoryBaseAddr = (unsigned int)&escADCConvert;
-	DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
-	DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
-	DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
-	DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
-	DMA_InitStructure.DMA_Priority = DMA_Priority_High;
-	DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
-
-	DMA_Init(DMA1_Channel1, &DMA_InitStructure);
-	DMA_ITConfig(DMA1_Channel1, DMA_IT_TC,ENABLE);
-	DMA_Cmd(DMA1_Channel1, ENABLE);
 
 
-  /* Enable DMA channel1 IRQ Channel */
-	NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel1_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_DAM1_IRQ_PREPRIORITY;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_DAM1_IRQ_SUBPRIORITY;
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_Init(&NVIC_InitStructure);
-	
-	adc_updated = 0;
-
-}
-
-void DMA1_Channel1_IRQHandler(void)
-{
- if(DMA_GetITStatus(DMA1_IT_TC1))
- {
-	 adc_updated = 1;
-	 DMA_ClearITPendingBit(DMA1_IT_GL1);
- }
-}
 
 
-unsigned short Cali_Adc_Value(int id)
-{
-	int i;
-	u32 sensor = 0; 	
-	for(i=0;i<ADC_SAMPLE_COUNT;i++)
-	{
-		sensor += escADCConvert[i][0];
-	}
-	sensor = sensor>>5;
-	return sensor;
-}
+
+
 
 
 
@@ -972,6 +1019,8 @@ void heart_led_even()
 	if( systick_check_timer( &led_timer ) ){
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
 		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
+		
+		//accel_check_even();
 	}
 }
 
@@ -1035,6 +1084,8 @@ void app_init()
 	lcd_init();
 	switch_init();
 	heart_led_init();
+	
+	ADC_Configuration ();
 }
 
 
