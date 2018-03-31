@@ -62,9 +62,9 @@
 
 #define BOARD_IR_TESTBOARD	0
 #define BOARD_MOTOR 				0
-#define BOARD_QIPAD					1
+#define BOARD_QIPAD					0
 #define BOARD_Trex_V2				0
-
+#define BOARD_MOTOR_COOPERATE 1
 
 
 

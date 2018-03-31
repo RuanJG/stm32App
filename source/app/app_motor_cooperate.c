@@ -9,7 +9,7 @@
 #include "LCD1602.h"
 #include "hw_config.h"
 #include "switcher.h"
-#if BOARD_MOTOR
+#if BOARD_MOTOR_COOPERATE
 
 
 #define _LOG(X...) if( 1 ) printf(X);
@@ -57,6 +57,125 @@ void Uart_init()
 
 
 
+}
+
+
+
+
+
+
+#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
+  #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
+#else
+  #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
+#endif
+#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
+#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
+
+// the size of struct config should be n*4Byte
+struct config {
+	int config_avaliable;
+	int motor1_speed;
+	int motor1_circle_count;
+	int motor1_direction;
+	int motor2_speed;
+	int motor2_circle_count;
+	int motor2_direction;
+};
+volatile struct config g_config;
+systick_time_t auto_save_config_timer;
+
+void config_read()
+{
+	volatile int * p;
+	__IO int* addr;
+	int i, int_count;
+	
+	addr = (__IO int*) CONFIG_ADDRESS;
+	int_count = sizeof( struct config )/sizeof( int );	
+	p = (volatile int*)&g_config;
+	for( i=0; i< int_count  ; i++ ){
+		*(p+i) = *(__IO int*) addr;
+		addr++;
+	}
+	
+}
+
+int config_save()
+{
+	int timeout, i, res;
+	volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
+	volatile int * data = (volatile int *) &g_config;
+	int addr = CONFIG_ADDRESS;
+	int int_count = sizeof( struct config )/sizeof( int );
+	
+	g_config.config_avaliable = 1;
+		
+	FLASHStatus = FLASH_COMPLETE;
+	FLASH_Unlock();
+	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
+	
+	res = 0;
+	timeout = 10;
+	while( timeout-- > 0)
+	{
+		FLASHStatus = FLASH_ErasePage(addr);
+		if( FLASHStatus == FLASH_COMPLETE ){
+			res = 1;
+			break;
+		}
+	}
+	
+	if( res == 1 )
+	{
+		for ( i = 0; i< int_count ; i++ )
+		{
+			res = 0;
+			timeout = 10;
+			while( timeout-- > 0)
+			{
+				FLASHStatus = FLASH_ProgramWord( addr+4*i, *(data+i) ) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
+				if( FLASHStatus == FLASH_COMPLETE ){
+					res = 1;
+					break;
+				}
+			}
+			if( res == 0 ) break;
+		}
+	}
+
+	FLASH_Lock();
+	
+	return res;
+}
+
+
+void config_init()
+{
+	//if no this setting , flash will very slow
+	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
+	g_config.config_avaliable = 0;
+	config_read();
+	if( g_config.config_avaliable != 1 ){
+		// never init
+		g_config.config_avaliable = 1;
+		g_config.motor1_circle_count = 0;
+		g_config.motor1_direction = 0;
+		g_config.motor1_speed = 0;
+		g_config.motor2_circle_count = 0;
+		g_config.motor2_direction = 0;
+		g_config.motor2_speed = 0;
+		
+		config_save();
+	}
+	systick_init_timer( &auto_save_config_timer , 1000 );
+}
+
+void config_auto_save_even()
+{
+	if( systick_check_timer( & auto_save_config_timer ) && g_config.config_avaliable == 2){
+		config_save();
+	}
 }
 
 
@@ -189,14 +308,17 @@ int accel_check_even()
 
 
 
-#define MAX_FREQ 20000  // limit=[0,200khz],  20Khz=3000 r/m
-#define LIMIT_MAX_SPEED 180 // round/min
-#define LIMIT_MAX_FREQ 1200 // LIMIT_MAX_SPEED / 60 *400
-#define LIMIT_MIN_FREQ 1
+
 #define ONE_ROUND_FREQ 400  //xi feng 
+#define MAX_FREQ 4000   // limit=[0,200khz],  20Khz=3000 r/min;  4000Hz=600r/min
+#define LIMIT_MAX_SPEED 180 // round/min
+#define RATE_ACCLE		300
+#define DERATE_ACCLE	400
+
+#define LIMIT_MAX_FREQ 1200 // (LIMIT_MAX_SPEED / 60) * ONE_ROUND_FREQ   PS: to be <= MAX_FREQ
+#define LIMIT_MIN_FREQ 1
 #define LIMIT_MAX_ROUND_COUNT 99
 #define LIMIT_MIN_ROUND_COUNT 1
-#define RATE_FREQ 300
 #define MOTOR_LOOP_INTERVAL_MS 10
 #define MOTOR1_ID 1
 #define MOTOR2_ID 2
@@ -205,7 +327,9 @@ int accel_check_even()
 #define MOTOR_EN_ON  Bit_RESET
 #define MOTOR_EN_OFF Bit_SET
 
-#define DERATE_ACCLE 400
+
+
+
 float deaccle;
 
 struct motor {
@@ -219,6 +343,7 @@ struct motor {
 	unsigned int   rate_reduce_expect_freq;
 	float          accelerate_freq;
 	float					 accel;
+	int						 status;
 	//pwm pin
 	GPIO_TypeDef* pGPIOx;
 	uint16_t pGPIO_pin;
@@ -247,6 +372,28 @@ void motor_en(volatile struct motor *motorx , unsigned char en)
 {
 	GPIO_WriteBit( motorx->eGPIOx , motorx->eGPIO_pin, (BitAction) en);
 }
+
+
+
+
+#define ADC_MIN 0
+#define ADC_MAX 4096
+volatile int adc_freq ;
+
+int adc_freq_update()
+{
+	int adc;
+	if( adc_updated == 0 ){
+		return adc_freq;
+	}
+	adc = Cali_Adc_Value();
+	_LOG("adc=%d\n",adc);
+	
+	// adc_freq/LIMIT_MAX_FREQ = (adc-ADC_MIN)/(ADC_MAX-ADC_MIN)
+	adc_freq = LIMIT_MAX_FREQ*(adc-ADC_MIN)/(ADC_MAX-ADC_MIN) ;
+	_LOG("adc_freq=%d\n",adc_freq);
+}
+
 
 
 int motor_rate(volatile struct motor *motorx, unsigned short freq)
@@ -332,7 +479,7 @@ void motor_hw_init(volatile struct motor *motorx)
 	GPIO_Init(motorx->dGPIOx, &GPIO_InitStructure);
 	//motor_set_direct( motorx, motorx->direction);
 	
-	motor_rate(motorx, motorx->expect_freq);
+	motor_rate(motorx, 0);
 }
 
 void TIM2_IRQHandler()
@@ -342,7 +489,7 @@ void TIM2_IRQHandler()
 		motor2.current_pulse++;
 		if( motor2.current_pulse >= motor2.expect_pulse ){
 			motor2.current_pulse = motor2.expect_pulse;
-			motor_rate( &motor2, 0 );
+			//motor_rate( &motor2, 0 );
 		}
 		TIM_ClearITPendingBit(TIM2, TIM_IT_CC3);
 	}else{
@@ -359,7 +506,7 @@ void TIM3_IRQHandler()
 		motor1.current_pulse++;
 		if( motor1.current_pulse >= motor1.expect_pulse ){
 			motor1.current_pulse = motor1.expect_pulse;
-			motor_rate( &motor1, 0 );
+			//motor_rate( &motor1, 0 );
 		}
 		TIM_ClearITPendingBit(TIM3, TIM_IT_CC2);
 	}else{
@@ -372,19 +519,7 @@ void motor_rate_check_even( volatile struct motor *motorx )
 {
 	int freq, exfreq;
 	
-	// has been stop
-	if( motorx->current_pulse >= motorx->expect_pulse ){
-		//systick_delay_us(500000);
-		motor_en( motorx, MOTOR_EN_OFF);
-		return;
-	}
-	
-	//if time to reduce speed 
-	if( motorx->current_pulse >= motorx->rate_reduce_pulse_point ) {
-			motorx->expect_freq = motorx->rate_reduce_expect_freq;//motorx->accelerate_freq*1000;
-	}
-	
-	// has been average speed
+	// has been expect speed
 	if( motorx->current_freq == motorx->expect_freq ){
 		motorx->accel = 0;
 		return;
@@ -396,17 +531,17 @@ void motor_rate_check_even( volatile struct motor *motorx )
 	if( motorx->current_freq < exfreq )
 	{
 		
-	motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
-	freq = motorx->accel; // 去小数
-	motorx->accel -= freq;
+		motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
+		freq = motorx->accel; // 去小数
+		motorx->accel -= freq;
 		
 		freq += motorx->current_freq;// add rate
 		freq = (freq < exfreq) ? freq: exfreq;
 	}else{
 		
-	motorx->accel += (deaccle *MOTOR_LOOP_INTERVAL_MS) ;
-	freq = motorx->accel; // 去小数
-	motorx->accel -= freq;
+		motorx->accel += (motorx->accelerate_freq *MOTOR_LOOP_INTERVAL_MS) ;
+		freq = motorx->accel; // 去小数
+		motorx->accel -= freq;
 		
 		freq = motorx->current_freq - freq;// reduce rate
 		freq = (freq >= exfreq) ? freq: exfreq;
@@ -488,22 +623,10 @@ void motor_init()
 
 
 
-
-
-void motor_loop()
-{
-	if( systick_check_timer( &motor_timer ) ){
-		motor_rate_check_even(&motor1);
-		motor_rate_check_even(&motor2);
-	}
-	
-}
-
-
 void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsigned int expect_pulse , unsigned char direction)
 {
-	//加速度是  RATE_FREQ/MOTOR_LOOP_INTERVAL_MS
-	// s = v0 * t + 0.5* a*t*t ; t= (v1-v0)/RATE_FREQ/MOTOR_LOOP_INTERVAL_MS
+	//加速度是  RATE_ACCLE/MOTOR_LOOP_INTERVAL_MS
+	// s = v0 * t + 0.5* a*t*t ; t= (v1-v0)/RATE_ACCLE/MOTOR_LOOP_INTERVAL_MS
 	
 	//t = v/a;  
 	// s = v*t/2  ==>  s = v*(v/a)/2 = (v*v)/(a*2); 
@@ -526,31 +649,23 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 		return;
 	}
 	
-	
-	accel = RATE_FREQ;//RATE_FREQ * expect_freq /120; //  根据速度与参考速度的比例 ，调整加速时间 
-	//accel = accel_check_even();
-	deaccle = (float)DERATE_ACCLE/1000;
-	pulse = expect_freq*expect_freq/2/(DERATE_ACCLE);
-	if( (pulse*2) < expect_pulse ){
-		motorx->rate_reduce_pulse_point = expect_pulse- pulse;
-	}else{
-		motorx->rate_reduce_pulse_point = expect_pulse/2;
-	}
-	
-	motorx->rate_reduce_expect_freq = 30;//10;
-	motorx->accelerate_freq = accel/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_FREQ;
+
+	motorx->accelerate_freq = RATE_ACCLE/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_ACCLE;
 	motorx->accel = 0;
 	
 	motorx->expect_freq = expect_freq;
+	//motorx->current_freq = 0;
+	
 	motorx->expect_pulse = expect_pulse;
 	motorx->current_pulse = 0;
-	motorx->current_freq = 10;
+	
 	
 	_LOG("expect_pulse=%d, accel=%f, accel_pulse=%d,rate_reduce_pulse=%d, expect_freq = %d\n", expect_pulse, accel,pulse, motorx->rate_reduce_pulse_point, expect_freq);
 	
 	motor_set_direct( motorx, direction);
 	motor_en( motorx, MOTOR_EN_ON);
-	systick_delay_us(500000);
+
+	//systick_delay_us(500000);
 }
 
 
@@ -558,139 +673,59 @@ void motor_stop(volatile struct motor *motorx)
 {
 	unsigned int pulse;
 	
-		// has stoped
-	if( motorx->current_pulse >= motorx->expect_pulse )
-		return;
+	if( motorx->current_freq == 0 ) return;
 	
-	//goto the reduce rate state
-	if( motorx->current_pulse < motorx->rate_reduce_pulse_point ){
-		deaccle = 0.7;
-		pulse = motorx->current_freq *motorx->current_freq/2/(deaccle*1000);
-		motorx->current_pulse = 1;
-		motorx->expect_pulse = pulse;
-		motorx->rate_reduce_pulse_point = 0;
-		//if( motorx->current_freq < motorx->accelerate_freq*1000 )			motorx->current_pulse = motorx->expect_pulse;
-	}
-}
-
-
-
-
-
-
-#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
-  #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
-#else
-  #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
-#endif
-#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
-#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
-
-// the size of struct config should be n*4Byte
-struct config {
-	int config_avaliable;
-	int motor1_speed;
-	int motor1_circle_count;
-	int motor1_direction;
-	int motor2_speed;
-	int motor2_circle_count;
-	int motor2_direction;
-};
-volatile struct config g_config;
-systick_time_t auto_save_config_timer;
-
-void config_read()
-{
-	volatile int * p;
-	__IO int* addr;
-	int i, int_count;
+	motorx->accelerate_freq = DERATE_ACCLE/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_ACCLE;
+	motorx->accel = 0;
+	motorx->expect_freq = 0;
 	
-	addr = (__IO int*) CONFIG_ADDRESS;
-	int_count = sizeof( struct config )/sizeof( int );	
-	p = (volatile int*)&g_config;
-	for( i=0; i< int_count  ; i++ ){
-		*(p+i) = *(__IO int*) addr;
-		addr++;
-	}
-	
-}
-
-int config_save()
-{
-	int timeout, i, res;
-	volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
-	volatile int * data = (volatile int *) &g_config;
-	int addr = CONFIG_ADDRESS;
-	int int_count = sizeof( struct config )/sizeof( int );
-	
-	g_config.config_avaliable = 1;
-		
-	FLASHStatus = FLASH_COMPLETE;
-	FLASH_Unlock();
-	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
-	
-	res = 0;
-	timeout = 10;
-	while( timeout-- > 0)
-	{
-		FLASHStatus = FLASH_ErasePage(addr);
-		if( FLASHStatus == FLASH_COMPLETE ){
-			res = 1;
-			break;
+	while( motorx->current_freq > 0 ){
+		if( systick_check_timer( &motor_timer ) ){
+			motor_rate_check_even(&motor1);
+			motor_rate_check_even(&motor2);
 		}
+		systick_delay_ms( MOTOR_LOOP_INTERVAL_MS );
 	}
 	
-	if( res == 1 )
-	{
-		for ( i = 0; i< int_count ; i++ )
-		{
-			res = 0;
-			timeout = 10;
-			while( timeout-- > 0)
-			{
-				FLASHStatus = FLASH_ProgramWord( addr+4*i, *(data+i) ) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
-				if( FLASHStatus == FLASH_COMPLETE ){
-					res = 1;
-					break;
-				}
+}
+
+
+
+volatile int motor_manual_status = 0;
+
+void motor_loop()
+{
+	adc_freq_update();
+	if( adc_freq > 0 ){
+		if( motor_manual_status == 0 ){
+			//start 
+			motor_start(&motor1 , adc_freq , g_config.motor1_circle_count * ONE_ROUND_FREQ , g_config.motor1_direction);
+			motor_manual_status = 1;
+		}else{
+			if( motor1.current_pulse < motor1.expect_pulse ){
+				motor1.expect_freq = adc_freq;
+			}else{
+				motor_stop( &motor1 );
 			}
-			if( res == 0 ) break;
+		}
+	}else{
+		if( motor_manual_status == 1 ){
+			//stop
+			motor_stop( &motor1 );
+			motor_manual_status = 0;
 		}
 	}
-
-	FLASH_Lock();
-	
-	return res;
-}
-
-
-void config_init()
-{
-	//if no this setting , flash will very slow
-	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
-	g_config.config_avaliable = 0;
-	config_read();
-	if( g_config.config_avaliable != 1 ){
-		// never init
-		g_config.config_avaliable = 1;
-		g_config.motor1_circle_count = 0;
-		g_config.motor1_direction = MOTOR_DIRECTION_LEFT;
-		g_config.motor1_speed = 0;
-		g_config.motor2_circle_count = 0;
-		g_config.motor2_direction = MOTOR_DIRECTION_LEFT;
-		g_config.motor2_speed = 0;
-		
-		config_save();
-	}
-	systick_init_timer( &auto_save_config_timer , 1000 );
-}
-
-void config_auto_save_even()
-{
-	if( systick_check_timer( & auto_save_config_timer ) && g_config.config_avaliable == 2){
-		config_save();
+	if( systick_check_timer( &motor_timer ) ){
+		motor_rate_check_even(&motor1);
+		motor_rate_check_even(&motor2);
 	}
 }
+
+
+
+
+
+
 
 
 

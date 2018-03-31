@@ -437,6 +437,11 @@
               <FileType>1</FileType>
               <FilePath>.\source\app\app_trex_v2.c</FilePath>
             </File>
+            <File>
+              <FileName>app_motor_cooperate.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_motor_cooperate.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
