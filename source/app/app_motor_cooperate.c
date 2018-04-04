@@ -340,8 +340,8 @@ struct motor {
 	unsigned int   current_pulse;
 	unsigned int   expect_pulse;
 	unsigned int   rate_reduce_pulse_point;
-	unsigned int   rate_reduce_expect_freq;
-	float          accelerate_freq;
+	float					 deaccel_freq;
+	float          accel_freq;
 	float					 accel;
 	int						 status;
 	//pwm pin
@@ -376,8 +376,8 @@ void motor_en(volatile struct motor *motorx , unsigned char en)
 
 
 
-#define ADC_MIN 0
-#define ADC_MAX 4096
+#define ADC_MIN 50
+#define ADC_MAX 3500
 volatile int adc_freq ;
 
 int adc_freq_update()
@@ -387,11 +387,14 @@ int adc_freq_update()
 		return adc_freq;
 	}
 	adc = Cali_Adc_Value();
-	_LOG("adc=%d\n",adc);
+	//_LOG("adc=%d\n",adc);
+
+	adc = adc > ADC_MAX ? ADC_MAX:adc;
+	adc = adc < ADC_MIN ? ADC_MIN:adc;
 	
 	// adc_freq/LIMIT_MAX_FREQ = (adc-ADC_MIN)/(ADC_MAX-ADC_MIN)
 	adc_freq = LIMIT_MAX_FREQ*(adc-ADC_MIN)/(ADC_MAX-ADC_MIN) ;
-	_LOG("adc_freq=%d\n",adc_freq);
+	//_LOG("adc_freq=%d\n",adc_freq);
 }
 
 
@@ -518,6 +521,7 @@ void TIM3_IRQHandler()
 void motor_rate_check_even( volatile struct motor *motorx )
 {
 	int freq, exfreq;
+	float accel;
 	
 	// has been expect speed
 	if( motorx->current_freq == motorx->expect_freq ){
@@ -525,13 +529,15 @@ void motor_rate_check_even( volatile struct motor *motorx )
 		return;
 	}
 	
+	accel = motorx->expect_freq == 0 ? motorx->deaccel_freq:motorx->accel_freq ;
+	
 	// add or reduce speed
 	exfreq = motorx->expect_freq;
 
 	if( motorx->current_freq < exfreq )
 	{
 		
-		motorx->accel += (motorx->accelerate_freq*MOTOR_LOOP_INTERVAL_MS) ;
+		motorx->accel += (accel*MOTOR_LOOP_INTERVAL_MS) ;
 		freq = motorx->accel; // 去小数
 		motorx->accel -= freq;
 		
@@ -539,7 +545,7 @@ void motor_rate_check_even( volatile struct motor *motorx )
 		freq = (freq < exfreq) ? freq: exfreq;
 	}else{
 		
-		motorx->accel += (motorx->accelerate_freq *MOTOR_LOOP_INTERVAL_MS) ;
+		motorx->accel += (accel *MOTOR_LOOP_INTERVAL_MS) ;
 		freq = motorx->accel; // 去小数
 		motorx->accel -= freq;
 		
@@ -548,7 +554,8 @@ void motor_rate_check_even( volatile struct motor *motorx )
 	}
 	
 	
-	if( freq != motorx->current_freq &&  freq >= LIMIT_MIN_FREQ && freq <= LIMIT_MAX_FREQ ){
+	//if( freq != motorx->current_freq &&  freq >= LIMIT_MIN_FREQ && freq <= LIMIT_MAX_FREQ ){
+	if( freq != motorx->current_freq ) {
 		motor_rate( motorx, freq );
 	}else{
 		//call error
@@ -635,10 +642,11 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	
 	
 	// running
-	if( motorx->current_pulse < motorx->expect_pulse ){
-		_LOG("motor%d start : is running , error\n", motorx->id);
-		return;
-	}
+	//if( motorx->current_pulse < motorx->expect_pulse ){
+	//	_LOG("motor%d start : is running , error\n", motorx->id);
+	//	return;
+	//}
+	
 	// reinit parameter
 	if( expect_freq > LIMIT_MAX_FREQ || expect_freq < LIMIT_MIN_FREQ ){
 		_LOG("motor%d start : freq %d error\n", motorx->id, expect_freq);
@@ -650,7 +658,8 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	}
 	
 
-	motorx->accelerate_freq = RATE_ACCLE/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_ACCLE;
+	motorx->accel_freq = RATE_ACCLE/1000.0 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_ACCLE;
+	motorx->deaccel_freq = DERATE_ACCLE/1000.0;
 	motorx->accel = 0;
 	
 	motorx->expect_freq = expect_freq;
@@ -659,12 +668,12 @@ void motor_start(volatile struct motor *motorx , unsigned int expect_freq , unsi
 	motorx->expect_pulse = expect_pulse;
 	motorx->current_pulse = 0;
 	
-	
-	_LOG("expect_pulse=%d, accel=%f, accel_pulse=%d,rate_reduce_pulse=%d, expect_freq = %d\n", expect_pulse, accel,pulse, motorx->rate_reduce_pulse_point, expect_freq);
-	
+
 	motor_set_direct( motorx, direction);
 	motor_en( motorx, MOTOR_EN_ON);
 
+		
+	_LOG("Start : expect_pulse=%d, expect_freq = %d, accel=%f\n", expect_pulse, expect_freq, motorx->accel_freq );
 	//systick_delay_us(500000);
 }
 
@@ -673,9 +682,10 @@ void motor_stop(volatile struct motor *motorx)
 {
 	unsigned int pulse;
 	
+	_LOG("Stoped ... \n");
+	
 	if( motorx->current_freq == 0 ) return;
 	
-	motorx->accelerate_freq = DERATE_ACCLE/1000 ;//MOTOR_LOOP_INTERVAL_MS*a/1000; //=RATE_ACCLE;
 	motorx->accel = 0;
 	motorx->expect_freq = 0;
 	
@@ -687,6 +697,8 @@ void motor_stop(volatile struct motor *motorx)
 		systick_delay_ms( MOTOR_LOOP_INTERVAL_MS );
 	}
 	
+	_LOG("Stoped ... \n");
+	
 }
 
 
@@ -696,25 +708,23 @@ volatile int motor_manual_status = 0;
 void motor_loop()
 {
 	adc_freq_update();
+	
 	if( adc_freq > 0 ){
-		if( motor_manual_status == 0 ){
-			//start 
+		if(  motor_manual_status  == 0 ){
 			motor_start(&motor1 , adc_freq , g_config.motor1_circle_count * ONE_ROUND_FREQ , g_config.motor1_direction);
 			motor_manual_status = 1;
-		}else{
-			if( motor1.current_pulse < motor1.expect_pulse ){
-				motor1.expect_freq = adc_freq;
-			}else{
-				motor_stop( &motor1 );
-			}
 		}
 	}else{
-		if( motor_manual_status == 1 ){
-			//stop
-			motor_stop( &motor1 );
-			motor_manual_status = 0;
-		}
+		if( motor1.current_freq == 0 )  motor_manual_status = 0;
 	}
+	
+	if( motor1.current_pulse == motor1.expect_pulse ){
+		motor1.expect_freq = 0;
+	}else{
+		motor1.expect_freq = adc_freq;
+	}
+	
+	
 	if( systick_check_timer( &motor_timer ) ){
 		motor_rate_check_even(&motor1);
 		motor_rate_check_even(&motor2);

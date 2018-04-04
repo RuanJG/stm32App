@@ -606,6 +606,8 @@ int is_voltageCali_server_start()
 #define VALVE_COIL_PANEL_OFF()			GPIOA->BRR = GPIO_Pin_1
 #define VALVE_RECEIVE_PANEL_ON()			GPIOA->BSRR = GPIO_Pin_3
 #define VALVE_RECEIVE_PANEL_OFF()			GPIOA->BRR = GPIO_Pin_3
+#define VALVE_TEST_MODE_ON()			GPIOA->BSRR = GPIO_Pin_2
+#define VALVE_TEST_MODE_OFF()			GPIOA->BRR = GPIO_Pin_2
 
 void valve_init()
 {
@@ -614,7 +616,7 @@ void valve_init()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
 
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_1 | GPIO_Pin_15 | GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_1 | GPIO_Pin_15 | GPIO_Pin_6 | GPIO_Pin_7 |GPIO_Pin_2;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);
@@ -624,6 +626,7 @@ void valve_init()
 	VALVE_5V_OFF();
 	VALVE_COIL_PANEL_OFF();
 	VALVE_RECEIVE_PANEL_OFF();
+	VALVE_TEST_MODE_OFF();
 }
 
 
@@ -1095,8 +1098,15 @@ void cmd_even()
 						}
 						break;
 					case '6':
-							voltageCali_server_start();
-							currentCali_server_start();
+						if( buffer[index-1]== '1' ){
+							VALVE_TEST_MODE_ON();
+							_LOG("VALVE_TEST_MODE_ON ON \n");
+						}else{
+							VALVE_TEST_MODE_OFF();
+							_LOG("VALVE_TEST_MODE_ON OFF \n");
+						}
+						//	voltageCali_server_start();
+						//	currentCali_server_start();
 					break;
 					case '7':
 							if( buffer[index-1] == 'r') {RUNING_LEN_ON();}
