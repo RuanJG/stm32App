@@ -311,11 +311,11 @@ int accel_check_even()
 
 #define ONE_ROUND_FREQ 400  //xi feng 
 #define MAX_FREQ 4000   // limit=[0,200khz],  20Khz=3000 r/min;  4000Hz=600r/min
-#define LIMIT_MAX_SPEED 180 // round/min
+#define LIMIT_MAX_SPEED 80 // round/min
 #define RATE_ACCLE		300
-#define DERATE_ACCLE	400
+#define DERATE_ACCLE	500
 
-#define LIMIT_MAX_FREQ 1200 // (LIMIT_MAX_SPEED / 60) * ONE_ROUND_FREQ   PS: to be <= MAX_FREQ
+#define LIMIT_MAX_FREQ 533 // (LIMIT_MAX_SPEED / 60) * ONE_ROUND_FREQ   PS: to be <= MAX_FREQ
 #define LIMIT_MIN_FREQ 1
 #define LIMIT_MAX_ROUND_COUNT 99
 #define LIMIT_MIN_ROUND_COUNT 1
@@ -958,6 +958,8 @@ void round_reduce_key_toggle_handler()
 
 void start_key_press_handler()
 {
+	
+	return;
 	if( g_config.config_avaliable == 2 )
 	{
 			config_save();
