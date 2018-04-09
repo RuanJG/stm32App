@@ -2,7 +2,7 @@
 
 #include "switcher.h"
 
-void switcher_init(volatile  struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   )
+void switcher_init(struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   )
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	

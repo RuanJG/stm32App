@@ -7,6 +7,7 @@
 #include "systick.h"
 #include "iap.h"
 #include "hw_config.h"
+#include "switcher.h"
 #if BOARD_QIPAD
 
 
@@ -268,7 +269,7 @@ int is_red_led_on()
 	}
 	
 	red_led_adc = 4096 - red_led_adc;
-	_LOG("red adc=%d\n",red_led_adc);
+	//_LOG("red adc=%d\n",red_led_adc);
 	
 	if( red_led_adc >= RED_LED_HIGHT_LEVEL ){
 		return 1;
@@ -284,7 +285,7 @@ int is_white1_led_on()
 	}
 	
 	white1_led_adc = 4096 - white1_led_adc;
-	_LOG("white1 adc=%d\n",white1_led_adc);
+	//_LOG("white1 adc=%d\n",white1_led_adc);
 	
 	if( white1_led_adc >= WHITE1_LED_HIGHT_LEVEL ){
 		return 1;
@@ -300,7 +301,7 @@ int is_white2_led_on()
 	}
 	
 	white2_led_adc = 4096 - white2_led_adc;
-	_LOG("white2 adc=%d\n",white2_led_adc);
+	//_LOG("white2 adc=%d\n",white2_led_adc);
 	
 	if( white2_led_adc >= WHITE2_LED_HIGHT_LEVEL ){
 		return 1;
@@ -460,7 +461,8 @@ int miniMeterCoder_read(miniMeterCoder_t * coder, float *value)
 	
 	for( i=0; i< count ; i++){
 		if( 1 == miniMeterCoder_prase( coder , packget[i] ) ){
-			_LOG( "%.5fV" , coder->value);
+			//_LOG( "%.5f" , coder->value);
+			*value = coder->value;
 			res = 1;
 		}
 	}
@@ -514,7 +516,7 @@ void miniMeter_toggle(miniMeterCoder_t * coder)
 
 volatile char currentCali_server_tag = 0;
 volatile float current_sum;
-volatile int	current_counter;
+volatile float	current_counter;
 void currentCali_server_start()
 {
 	miniMeterCoder_clear(&currentMeter );
@@ -531,8 +533,12 @@ void currentCali_server_even()
 	if( currentCali_server_tag == 0 ) return;
 	
 	if( 1 == miniMeterCoder_read(&currentMeter, &value) ){
+		//ignore 0 ?
+		if( value <= 0.0 ) return ;
+		// sum up
 		current_sum += value;
-		current_counter++;
+		current_counter +=1 ;
+		_LOG("currentCali C=%f, count=%f \n",value,current_counter);
 	}
 }
 void currentCali_server_stop()
@@ -549,7 +555,7 @@ int is_currentCali_server_start()
 
 volatile char voltageCali_server_tag = 0;
 volatile float voltage_sum;
-volatile int	voltage_counter;
+volatile float	voltage_counter;
 void voltageCali_server_start()
 {
 	miniMeterCoder_clear(&voltageMeter );
@@ -566,8 +572,12 @@ void voltageCali_server_even()
 	if( voltageCali_server_tag == 0 ) return;
 	
 	if( 1 == miniMeterCoder_read(&voltageMeter, &value) ){
+		//ignore 0 ?
+		if( value <= 0.0 ) return ;
+		// sum up
 		voltage_sum += value;
-		voltage_counter++;
+		voltage_counter+=1;
+		_LOG("VolCali V=%f, count=%f \n",value,voltage_counter);
 	}
 }
 void voltageCali_server_stop()
@@ -665,7 +675,7 @@ void heart_led_even()
 }
 
 
-
+/*
 volatile int launch_switch;
 volatile int pump_switch;
 
@@ -720,21 +730,52 @@ void EXTI1_IRQHandler()
 	pump_switch = 1;
 	EXTI_ClearITPendingBit(EXTI_Line1);
 }
+*/
 
 
 
 
 
-#define MS_COIL_PANEL_MOVE   1000
-#define MS_RECEIVE_PANEL_MOVE 1000
-#define MS_POWER_OFF_5V  200
+#define SW_INTERVAL_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
+#define SW_INTERVAL_MS 5
+systick_time_t sw_timer;
+volatile struct switcher left_key,right_key;
+
+
+void switch_init()
+{
+	switcher_init( &left_key, SW_INTERVAL_COUNT, 1 , 0 , GPIOB, GPIO_Pin_0, NULL , NULL);
+	switcher_init( &right_key, SW_INTERVAL_COUNT, 1, 0 , GPIOB, GPIO_Pin_1 , NULL, NULL);
+	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
+}
+
+void switch_even()
+{
+	if( 0 == systick_check_timer( &sw_timer ) ) return;
+	
+	switcher_interval_check( &left_key );
+	switcher_interval_check( &right_key );
+}
+
+
+
+
+
+
+
+
+
+
+
+#define MS_COIL_PANEL_MOVE   2000
+#define MS_RECEIVE_PANEL_MOVE 2000
 
 enum SERVER_STEP{
 	STEP_IDLE =0,
 	STEP_PULL_DOWM_COIL_PANEL, 
-	STEP_POWER_5V_UP,					
-	STEP_CAIL_CURRENT,					
-	STEP_CHECK_LED_TOGGLE,			
+	STEP_POWER_5V_UP,		
+	STEP_CAIL_CURRENT,	
+	STEP_CHECK_LED_TOGGLE,	
 	STEP_PULL_DOWN_RECEIVE_PANEL, 
 	STEP_CHECK_LED_ON,
 	STEP_CHECK_VOL_CURRENT,
@@ -745,22 +786,26 @@ enum SERVER_STEP{
 };
 
 volatile enum SERVER_STEP test_step ;
+volatile int server_start_tag;
 systick_time_t delay_timer;
 
+volatile int hold_step = STEP_FINISH;//STEP_FINISH;
 
 
 void service_break()
 {	
 	VALVE_5V_OFF();
-	systick_delay_us(1000 );
+	systick_delay_ms(500);
 	VALVE_RECEIVE_PANEL_OFF();
-	systick_delay_us( MS_RECEIVE_PANEL_MOVE *1000 );
+	//systick_delay_ms( 100 );
 	VALVE_COIL_PANEL_OFF();
-	systick_delay_us( MS_COIL_PANEL_MOVE *1000 );
+	//systick_delay_us( MS_COIL_PANEL_MOVE *1000 );
 	VALVE_S1_OFF();
 	VALVE_S2_OFF();
+	VALVE_TEST_MODE_OFF();
 	
 	test_step = STEP_IDLE;
+	server_start_tag = 0;
 	systick_init_timer( &delay_timer, 10 );
 }
 
@@ -768,15 +813,17 @@ void service_break()
 void service_init()
 {
 	VALVE_5V_OFF();
-	systick_delay_ms( MS_POWER_OFF_5V  );
+	systick_delay_ms( 1000  );
 	VALVE_RECEIVE_PANEL_OFF();
-	systick_delay_ms( MS_RECEIVE_PANEL_MOVE );
+	//systick_delay_ms( MS_RECEIVE_PANEL_MOVE );
 	VALVE_COIL_PANEL_OFF();
-	systick_delay_ms( MS_COIL_PANEL_MOVE );
+	//systick_delay_ms( MS_COIL_PANEL_MOVE );
 	VALVE_S1_OFF();
 	VALVE_S2_OFF();
+	VALVE_TEST_MODE_OFF();
 	
 	test_step = STEP_IDLE;
+	server_start_tag = 0;
 	systick_init_timer( &delay_timer, 10 );
 }
 
@@ -785,24 +832,33 @@ void service_even()
 {
 	float value;
 	
-	//break;
-	if( pump_switch == 1 ){
-		service_break();
-		launch_switch = 0;
-		pump_switch = 0;
-	}
-	//stop
-	if( launch_switch == 0  && test_step!= STEP_IDLE){
-		service_init();
+	if( left_key.state == left_key.press_level || right_key.state == right_key.press_level ){
+		if( server_start_tag == 2 ) {
+			//stop current operation
+			_LOG("switch stop\n");
+			service_break();
+			
+		}else if( left_key.state == left_key.press_level && right_key.state == right_key.press_level ){
+			//prepare start as two switch is on
+			server_start_tag = 1;
+			//_LOG("switch toggle\n");
+		}
+	}else{
+		if( server_start_tag == 1 ){
+			server_start_tag = 2;//start as tow switch is toggled
+			_LOG("switch start\n");
+		}
 	}
 	
 	if( 0 == systick_check_timer( &delay_timer ) ){
 		return;
 	}
 	
+	if( hold_step < test_step ) return;
+	
 	switch( test_step ){
 		case STEP_IDLE:{
-			if( launch_switch == 1 ){
+			if( server_start_tag == 2 ){
 				//start test
 				test_step++;
 			}
@@ -824,18 +880,19 @@ void service_even()
 			_LOG("******** STEP_POWER_5V_UP : Start\n");
 			break;
 		}
+
 		case STEP_CAIL_CURRENT:{
 			if( !is_currentCali_server_start() ){
 				//start
 				currentCali_server_start();
-				systick_init_timer( &delay_timer, 2000 );
+				systick_init_timer( &delay_timer, 4000 );
 				_LOG("******** STEP_CAIL_CURRENT Start...\n");
 			}else{
 				//check result
 				currentCali_server_stop();
-				if( current_counter > 0 ){
+				if( current_counter > 5 ){
 					value = current_sum/current_counter;
-					if( value >= 0.0001 && value <= 0.001 ){
+					if( value > 0.00009 && value <= 0.001 ){
 						test_step++;
 						systick_init_timer( &delay_timer, 1);
 						_LOG("STEP_CAIL_CURRENT OK\n");
@@ -844,7 +901,7 @@ void service_even()
 				}else{
 					_LOG("STEP_CAIL_CURRENT : no current data\n");
 				}
-				_LOG("STEP_CAIL_CURRENT : false\n");
+				_LOG("STEP_CAIL_CURRENT : false c=%f\n",value);
 				FALSE_LED_ON();
 				test_step = STEP_FINISH;
 				systick_init_timer( &delay_timer, 100 );
@@ -854,7 +911,7 @@ void service_even()
 		case STEP_CHECK_LED_TOGGLE:{
 			if( !is_check_led_toggle_server_start() ){
 				check_led_toggle_server_init();
-				systick_init_timer( &delay_timer, 4000 );
+				systick_init_timer( &delay_timer, 3000 );
 				_LOG("******** STEP_CHECK_LED_TOGGLE : Start\n");
 			}else{
 				check_led_toggle_server_stop();
@@ -901,7 +958,7 @@ void service_even()
 			}else{
 				voltageCali_server_stop();
 				currentCali_server_stop();
-				if( current_counter > 0 && voltage_counter > 0 ){
+				if( current_counter > 5 && voltage_counter > 5 ){
 					value = current_sum/current_counter;
 					if( value > 1.7 || value < 1.4 ){
 						_LOG("STEP_CHECK_VOL_CURRENT : current[1.4,1.7] false (%fA)\n",value);
@@ -929,6 +986,7 @@ void service_even()
 		case STEP_S1_ON:{ // red led is on 
 			if( !is_check_led_toggle_server_start() ){
 				VALVE_S1_ON();
+				VALVE_S2_OFF();
 				check_led_toggle_server_init();
 				systick_init_timer( &delay_timer, 500 );
 				_LOG("******** STEP_S1_ON : Start\n");
@@ -943,6 +1001,7 @@ void service_even()
 					test_step = STEP_FINISH;
 				}
 				VALVE_S1_OFF();
+				VALVE_S2_OFF();
 				systick_init_timer( &delay_timer, 100 );
 			}
 			break;
@@ -950,9 +1009,11 @@ void service_even()
 		case STEP_S2_ON:{ // all leds are off, current= [0.1mA,1mA]
 			if( !is_currentCali_server_start() ){
 				//start
+				VALVE_S1_OFF();
 				VALVE_S2_ON();
+				systick_delay_ms(1000);
 				currentCali_server_start();
-				systick_init_timer( &delay_timer, 2000 );
+				systick_init_timer( &delay_timer, 1000 );
 				_LOG("******** STEP_S2_ON : Start\n");
 			}else{
 				//check result
@@ -964,7 +1025,7 @@ void service_even()
 						_LOG("STEP_S2_ON : no current data\n");
 					}else{
 						value = current_sum/current_counter;
-						if( value >= 0.0001 && value <= 0.001 ){
+						if( value > 0.00009 && value <= 0.001 ){
 							test_step++;
 							systick_init_timer( &delay_timer, 500); // 500ms for switch origan status for next test
 							VALVE_S2_OFF();
@@ -987,7 +1048,7 @@ void service_even()
 		case STEP_CHECK_FINAL_CURRENT:{  //all leds are off(3s内), current= [0.1mA,1mA]
 			if( !is_currentCali_server_start() ){
 				currentCali_server_start();
-				systick_init_timer( &delay_timer, 2500 );
+				systick_init_timer( &delay_timer, 2000 );
 				_LOG("******** STEP_CHECK_FINAL_CURRENT: Start\n");
 			}else{
 				//check result
@@ -997,7 +1058,7 @@ void service_even()
 				}else{
 					if( current_counter > 0 ){
 						value = current_sum/current_counter;
-						if( value >= 0.0001 && value <= 0.001 ){
+						if( value > 0.00009 && value <= 0.001 ){
 							test_step++;
 							systick_init_timer( &delay_timer, 1);
 							PASS_LED_ON();
@@ -1020,12 +1081,10 @@ void service_even()
 		case STEP_FINISH:{
 			_LOG("STEP_FINISH: finish\n");
 			service_init();
-			launch_switch = 0;
 			break;
 		}
 		default:{
 			service_init();
-			launch_switch = 0;
 			_LOG("Server: ERROR ! get a unknow setp\n");
 			break;
 		}
@@ -1118,6 +1177,14 @@ void cmd_even()
 							else if(buffer[index-1] == 'p') {PASS_LED_OFF();}
 							else if(buffer[index-1] == 'f') {FALSE_LED_OFF();}
 					break;
+							
+				  case 's':
+							if( buffer[index -1 ] == '+' ) hold_step++;
+							else if ( buffer[index -1 ] == '-' ) hold_step--;
+							else if( buffer[index -1 ] > '0' && buffer[index -1 ] <= '9' ){
+								hold_step = buffer[index -1 ] - '0';
+							}
+					break;
 				}
 			}
 			index = 0;
@@ -1148,14 +1215,17 @@ void app_init()
 	LED_Detection_init();
 	led_pin_config();
 	miniMeter_init();
-	Switch_irq_init();
+	//Switch_irq_init();
 	service_init();
+
+	switch_init();
 
 }
 
 
 void app_event()
 {
+	switch_even();
 	check_led_toggle_server_event();
 	currentCali_server_even();
 	voltageCali_server_even();
