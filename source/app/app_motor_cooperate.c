@@ -1119,10 +1119,17 @@ void app_init()
 	Uart_init();
 
 #if BOARD_HAS_IAP
-	if( IAP_PORT_USB == 1 ) iap_init_in_usb();
-	else if( IAP_PORT_CAN1 == 1 )iap_init_in_can1();
-	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
+	#if IAP_PORT_USB 
+	iap_init_in_usb();
+	#endif
+	#if IAP_PORT_CAN1
+	iap_init_in_can1();
+	#endif
+	#if  IAP_PORT_UART
+	iap_init_in_uart( IAP_UART );
+	#endif
 #endif
+	
 	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
 	console_init( CONSOLE_USB_TYPE ,NULL );
 	

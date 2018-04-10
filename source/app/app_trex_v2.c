@@ -20,10 +20,10 @@ Uart_t Uart1;
 Uart_t Uart2;
 Uart_t Uart3;
 
-#define CURRENT_UART &Uart3
-#define PC_UART &Uart2
-#define CONSOLE_UART &Uart1
-#define IAP_UART &Uart2
+#define CONSOLE_UART &Uart3
+#define CURRENT_UART &Uart1
+#define PC_UART &Uart3
+#define IAP_UART &Uart3
 #define METER_UART &Uart1
 
 void Uart_init()
@@ -65,7 +65,7 @@ void Uart_init()
 	Uart_Configuration (&Uart2, USART2, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 #endif
 
-#if 0
+#if 1
 	//USART3								  
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
@@ -80,23 +80,6 @@ void Uart_init()
 	
 	Uart_Configuration (&Uart3, USART3, 57600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 	
-#endif
-
-#if 0
-	//CAN
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-									
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);	
-	
-	Can1_Configuration_mask(0, CAN1_ID, CAN_ID_STD, 0x1ff , CAN_SJW_1tq, CAN_BS1_3tq, CAN_BS2_5tq, 4);
 #endif
 	
 	//swd
@@ -1272,9 +1255,7 @@ void heart_led_even()
 		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
 		
 		get_voice_db();
-	}
-	
-		
+	}		
 }
 
 
@@ -1285,13 +1266,19 @@ void app_init()
 	Uart_init();
 
 #if BOARD_HAS_IAP
-	if( IAP_PORT_USB == 1 ) iap_init_in_usb();
-	else if( IAP_PORT_CAN1 == 1 )iap_init_in_can1();
-	else if( IAP_PORT_UART == 1) iap_init_in_uart( IAP_UART );
+	#if IAP_PORT_USB 
+	iap_init_in_usb();
+	#endif
+	#if IAP_PORT_CAN1
+	iap_init_in_can1();
+	#endif
+	#if  IAP_PORT_UART
+	iap_init_in_uart( IAP_UART );
+	#endif
 #endif
 
 	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
-	//console_init( CONSOLE_USB_TYPE ,NULL );
+	console_init( CONSOLE_USB_TYPE ,NULL );
 	
 
 	ADC_Configuration ();

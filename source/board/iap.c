@@ -13,6 +13,9 @@
 #define PROGRAM_STEP_GET_DATA 2
 #define PROGRAM_STEP_END 3
 
+#define PORT_UART_TYPE	1
+#define PORT_USB_TYPE		2
+#define PORT_CAN1_TYPE	4
 
 //use for program flash
 volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
@@ -127,17 +130,17 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 	int i;
 	protocol_encode(&iap_encoder,data,size);
 	//TODO
-	if( iap_port_type ==1 )
+	if( (iap_port_type & PORT_UART_TYPE) != 0 )
 	{//use uart
 		Uart_Put(iapUart, iap_encoder.data, iap_encoder.len);
 	}
 	
-	if( iap_port_type == 2 )
+	if((iap_port_type & PORT_CAN1_TYPE) != 0 )
 	{//use can1
 		Can1_Send(0x10,iap_encoder.data,iap_encoder.len);
 	}
 	
-	if( iap_port_type == 3 )
+	if( (iap_port_type & PORT_USB_TYPE) != 0 )
 	{
 		USB_TxWrite(iap_encoder.data, iap_encoder.len);
 		//USB_TxWrite_Sync(iap_encoder.data, iap_encoder.len);
@@ -246,7 +249,7 @@ void iap_init_in_uart(Uart_t *uart)
 	protocol_init( &iap_encoder );
 	iapUart = uart;
 	iapUart->read_cb = iap_uart_receive_handler;
-	iap_port_type = 1;
+	iap_port_type |= PORT_UART_TYPE;
 }
 
 
@@ -263,7 +266,7 @@ void iap_init_in_usb()
 	protocol_init( &iap_decoder );
 	protocol_init( &iap_encoder );
 	
-	iap_port_type = 3;
+	iap_port_type |= PORT_USB_TYPE;
 }
 
 
@@ -282,6 +285,6 @@ void iap_init_in_can1()
 {
 	protocol_init( &iap_decoder );
 	protocol_init( &iap_encoder );
-	iap_port_type = 2;
+	iap_port_type |= PORT_CAN1_TYPE;
 }
 
