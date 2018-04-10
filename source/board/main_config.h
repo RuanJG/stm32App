@@ -42,6 +42,7 @@
 
 //**********************************************************  config board hse clock
 //config hse in "Options for Target" 
+//STM32F10X_MD,HSE_VALUE=8000000
 
 //******************************************************** config iap 
 //check config in  "iap.h"
@@ -52,9 +53,15 @@
 
 //**********************************************************  config using usb/can1
 #define BOARD_USING_USB 1
-#define BOARD_USING_CAN1 0
 #define USB_COM_RX_BUF_SIZE       512			//  (1024 + 256)
 #define USB_COM_TX_BUF_SIZE       512			//  (1024 + 256)
+
+//********************************************************* config can1
+#define BOARD_USING_CAN1 0   // can1 and  usb  can't use in the sametime
+
+
+
+
 
 
 //------------------------Board special Config
@@ -68,7 +75,6 @@
 #define IAP_PORT_USB   1
 //******** config usb(can1)
 #define BOARD_USING_USB 1
-#define BOARD_USING_CAN1 0
 #define USB_COM_RX_BUF_SIZE       512			//  (1024 + 256)
 #define USB_COM_TX_BUF_SIZE       512			//  (1024 + 256)
 

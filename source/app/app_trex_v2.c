@@ -21,10 +21,10 @@ Uart_t Uart2;
 Uart_t Uart3;
 
 #define CONSOLE_UART &Uart3
-#define CURRENT_UART &Uart1
 #define PC_UART &Uart3
 #define IAP_UART &Uart3
 #define METER_UART &Uart1
+#define CURRENT_UART &Uart1
 
 void Uart_init()
 {
@@ -110,14 +110,14 @@ void ADC_Configuration ()
 
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);	
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);	
+	GPIO_Init(GPIOA, &GPIO_InitStructure);	
 
 	
 	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
@@ -130,7 +130,7 @@ void ADC_Configuration ()
 	
 	// 239.5 sampleTime => (239.5+12.5)/12M = 21us; 21*ADC_SAMPLE_COUNT * 3 = ADC_SAMPLE_COUNT * 63us = 1.890ms each group
 	// 71.5 smapleTime => 7us; 7us*ADC_SAMPLE_COUNT*3 = ADC_SAMPLE_COUNT* 21us = 0.630 ms 
-	ADC_RegularChannelConfig(ADC1, ADC_Channel_9, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_0, 1, ADC_SampleTime_239Cycles5);//ADC_SampleTime_71Cycles5	
  
 	// set ADC channel for temperature sensor
 	//ADC_TempSensorVrefintCmd(ENABLE);
@@ -276,10 +276,10 @@ int led_ctrl(int id, char cmd)
 
 	switch( id ){
 		case LED_STATUS_ID:
-			gpio = GPIOB; pin = GPIO_Pin_3; onValue = 0;
+			gpio = GPIOB; pin = GPIO_Pin_8; onValue = 0;
 			break;
 		case LED_ERROR_ID:
-			gpio = GPIOB; pin = GPIO_Pin_4; onValue = 0;
+			gpio = GPIOB; pin = GPIO_Pin_9; onValue = 0;
 			break;
 		case LED_PASS_ID:
 			gpio = GPIOB; pin = GPIO_Pin_5; onValue = 0;
@@ -347,7 +347,7 @@ void led_pin_config()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
 
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_8 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
@@ -385,10 +385,10 @@ void switch_det_config()
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
 
 	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
 	
 	sw_value = 0;
 	sw_counter = 0;
@@ -404,7 +404,7 @@ void switch_det_event()
 	if( 0 == systick_check_timer( &sw_timer ) )
 		return;
 	
-	sw_value +=  GPIO_ReadInputDataBit( GPIOB, GPIO_Pin_2 );
+	sw_value +=  GPIO_ReadInputDataBit( GPIOA, GPIO_Pin_5 );
 	sw_counter++;
 	
 	if( sw_counter >= SW_MAX_COUNT ){
@@ -583,8 +583,8 @@ void userStation_init()
 int userStation_send( unsigned char *data , int len)
 {
 	if( 1 == protocol_encode( &encoder, data, len ) ){
-		//Uart_Put_Sync( userUart , encoder.data, encoder.len );
-		USB_TxWrite( encoder.data, encoder.len );
+		Uart_Put_Sync( userUart , encoder.data, encoder.len );
+		//USB_TxWrite( encoder.data, encoder.len );
 		return 1;
 	}else{
 		return 0;
@@ -701,8 +701,8 @@ void userStation_listen_even()
 	unsigned char buffer[8];
 	unsigned char i, len;
 	
-	//len = Uart_Get( userUart, buffer, 8 );
-	len = USB_RxRead ( buffer, 8 );
+	len = Uart_Get( userUart, buffer, 8 );
+	//len = USB_RxRead ( buffer, 8 );
 	for( i=0 ; i<len; i++ ){
 		if( 1 == protocol_parse( &decoder, buffer[i] ) ){
 			userStation_handleMsg( decoder.data, decoder.len );
