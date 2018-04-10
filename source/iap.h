@@ -66,9 +66,9 @@ void iap_init(void);
 
 void iap_loop(void);
 
-void iap_jump_to_app_or_deamon();
+void iap_jump_to_app_or_deamon(void);
 
-int is_iap_tag_set();
+int is_iap_tag_set(void);
 
 
 

@@ -49,24 +49,6 @@ void gpio_init()
 	
 }
 
-void can1_init()
-{
-	Can1_Configuration_mask(0, CAN1_ID, CAN_ID_STD, 0x1ff , CAN_SJW_1tq, CAN_BS1_3tq, CAN_BS2_5tq, 4);
-}
-
-void uart_init()
-{
-	Uart_Configuration();
-}
-
-
-void toggle_pin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
-{
-	if( GPIO_ReadOutputDataBit(GPIOx,GPIO_Pin)!= 0)
-		GPIO_ResetBits(GPIOx,GPIO_Pin);
-	else
-		GPIO_SetBits(GPIOx,GPIO_Pin);
-}
 
 
 
@@ -112,15 +94,18 @@ void bsp_init()
 	
 	systick_init();
 	
-	if( 1 == IAP_PORT_UART)
-		uart_init();
+	#if IAP_PORT_UART
+		Uart_Configuration();
+	#endif
 
-	if ( 1== IAP_PORT_CAN1 )
-		can1_init();
+	#if IAP_PORT_CAN1
+		Can1_Configuration_mask(0, CAN1_ID, CAN_ID_STD, 0x1ff , CAN_SJW_1tq, CAN_BS1_3tq, CAN_BS2_5tq, 4);
+	#endif
 	
-	if( 1 == IAP_PORT_USB ){
+	#if  IAP_PORT_USB
 		USB_Config();
-	}
+	#endif
+	
 
 }
 
@@ -133,13 +118,17 @@ void bsp_event()
 
 void bsp_deinit()
 {
-	if ( 1== IAP_PORT_CAN1 )
+	#if IAP_PORT_CAN1 
 		CAN_DeInit(CAN1);
-	if( 1 == IAP_PORT_UART)
-		USART_Cmd(UARTDEV, DISABLE);	
+	#endif
 	
-	if( 1 == IAP_PORT_USB ){
+	#if IAP_PORT_UART
+		USART_Cmd(UARTDEV, DISABLE);	
+	#endif
+	
+	#if IAP_PORT_USB
 		USB_Deinit();
-	}
+	#endif
+	
 	systick_deinit();
 }

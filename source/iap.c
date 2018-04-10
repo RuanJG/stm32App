@@ -32,10 +32,6 @@ protocol_t decoder;
 protocol_t encoder;
 
 
-// controller can1 id
-unsigned int iap_controller_can_id = DEF_MAIN_CONTROLLER_CAN1_ID; 
-
-
 // iap_lost_ms if no data receive in iap_lost_ms , jump to app
 unsigned int _iap_lost_ms_max = 0;
 volatile unsigned int iap_lost_ms;
@@ -55,9 +51,7 @@ systick_time_t timeout_timer;
 
 // uart rx buffer
 #define UART_RX_BUFFER_SIZE 8
-#define CAN_RX_BUFFER_SIZE 8
 unsigned char uartRxBuffer[UART_RX_BUFFER_SIZE];
-unsigned char can1RxBuffer[CAN_RX_BUFFER_SIZE];
 
 
 void _memcpy(void *dst, const void *src, unsigned int n)
@@ -223,18 +217,28 @@ void iap_jump_to_app_or_deamon()
 
 int iap_receive_data(unsigned char * data, int size)
 {
+	int count;
+	unsigned char *pointer;
+	
+	count = 0;
+	pointer = data;
+	
 #if IAP_PORT_UART
-	return Uart_get(data,size);
+	count += Uart_get(pointer+count,size-count);
+	if ( count >= size ) return count;
 #endif
 	
 #if IAP_PORT_CAN1 
-	return  Can1_get(data,size);
+	count += Can1_get(pointer+count,size-count);
+	if ( count >= size ) return count;
 #endif
 	
 #if IAP_PORT_USB 
-	return USB_RxRead(data, size);
+	count += USB_RxRead(pointer+count,size-count);
+	if ( count >= size ) return count;
 #endif
 	
+	return count;
 }
 
 
