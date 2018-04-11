@@ -248,7 +248,7 @@ unsigned short Cali_Adc_Value(int id)
 #define WHITE1_LED_ADC_ID 1
 #define WHITE2_LED_ADC_ID 2
 
-#define RED_LED_HIGHT_LEVEL  30
+#define RED_LED_HIGHT_LEVEL  800
 #define WHITE1_LED_HIGHT_LEVEL 1000
 #define WHITE2_LED_HIGHT_LEVEL 1000
 
@@ -272,6 +272,7 @@ int is_red_led_on()
 	//_LOG("red adc=%d\n",red_led_adc);
 	
 	if( red_led_adc >= RED_LED_HIGHT_LEVEL ){
+		//_LOG("red adc=%d\n",red_led_adc);
 		return 1;
 	}else{ 
 		return 0;
@@ -408,8 +409,10 @@ typedef struct miniMeterCoder {
 	unsigned char packet[8];
 	unsigned char index;
 	unsigned char addr;
+	unsigned char started;
 	float 				value;
 	Uart_t				*uart;
+	
 }miniMeterCoder_t;
 
 void miniMeterCoder_init(miniMeterCoder_t * coder, Uart_t* uart)
@@ -420,6 +423,7 @@ void miniMeterCoder_init(miniMeterCoder_t * coder, Uart_t* uart)
 	coder->index = 0;
 	coder->addr = 0;
   coder->uart = uart;
+	coder->started = 0;
 }
 
 int miniMeterCoder_prase( miniMeterCoder_t * coder, unsigned char data )
@@ -472,11 +476,11 @@ int miniMeterCoder_read(miniMeterCoder_t * coder, float *value)
 
 void miniMeterCoder_clear( miniMeterCoder_t * coder )
 {
-	unsigned char tmp;
+	unsigned char tmp[8];
 	
 	coder->index = 0;
 	if( coder->uart != NULL )
-		while( Uart_Get( coder->uart	, &tmp, 1) );
+		while(  Uart_Get( coder->uart	, tmp, sizeof(tmp) ) >= sizeof(tmp) );
 }
 
 
@@ -495,14 +499,19 @@ void miniMeter_start(miniMeterCoder_t * coder)
 {
 	unsigned char packget[]={0x88,0xAE,0x00,0x21};
 	
-	Uart_Put(coder->uart, packget, sizeof( packget) );
+	if( coder->started == 0 )
+		Uart_Put(coder->uart, packget, sizeof( packget) );
+	coder->started = 1;
 }
 
 void miniMeter_stop(miniMeterCoder_t * coder)
 {
 	unsigned char packget[]={0x88,0xAE,0x00,0x01};
+
+	if( coder->started == 1 )
+		Uart_Put(coder->uart, packget, sizeof( packget) );
 	
-	Uart_Put(coder->uart, packget, sizeof( packget) );
+	coder->started = 0;
 }
 
 void miniMeter_toggle(miniMeterCoder_t * coder)
@@ -534,7 +543,7 @@ void currentCali_server_even()
 	
 	if( 1 == miniMeterCoder_read(&currentMeter, &value) ){
 		//ignore 0 ?
-		if( value <= 0.0 ) return ;
+		//if( value <= 0.0 ) return ;
 		// sum up
 		current_sum += value;
 		current_counter +=1 ;
@@ -543,7 +552,7 @@ void currentCali_server_even()
 }
 void currentCali_server_stop()
 {
-	miniMeter_stop( &currentMeter );
+	//miniMeter_stop( &currentMeter );
 	currentCali_server_tag = 0;
 }
 int is_currentCali_server_start()
@@ -573,7 +582,7 @@ void voltageCali_server_even()
 	
 	if( 1 == miniMeterCoder_read(&voltageMeter, &value) ){
 		//ignore 0 ?
-		if( value <= 0.0 ) return ;
+		//if( value <= 0.0 ) return ;
 		// sum up
 		voltage_sum += value;
 		voltage_counter+=1;
@@ -583,7 +592,7 @@ void voltageCali_server_even()
 void voltageCali_server_stop()
 {
 	voltageCali_server_tag = 0;
-	miniMeter_stop( &voltageMeter );
+	//miniMeter_stop( &voltageMeter );
 }
 int is_voltageCali_server_start()
 {
@@ -807,6 +816,10 @@ void service_break()
 	test_step = STEP_IDLE;
 	server_start_tag = 0;
 	systick_init_timer( &delay_timer, 10 );
+	
+	currentCali_server_stop();
+	voltageCali_server_stop();
+	check_led_toggle_server_stop();
 }
 
 
@@ -825,6 +838,10 @@ void service_init()
 	test_step = STEP_IDLE;
 	server_start_tag = 0;
 	systick_init_timer( &delay_timer, 10 );
+	
+	currentCali_server_stop();
+	voltageCali_server_stop();
+	check_led_toggle_server_stop();
 }
 
 
@@ -892,7 +909,7 @@ void service_even()
 				currentCali_server_stop();
 				if( current_counter > 5 ){
 					value = current_sum/current_counter;
-					if( value > 0.00009 && value <= 0.001 ){
+					if( value > 0.0000 && value <= 0.001 ){
 						test_step++;
 						systick_init_timer( &delay_timer, 1);
 						_LOG("STEP_CAIL_CURRENT OK\n");
@@ -1013,7 +1030,7 @@ void service_even()
 				VALVE_S2_ON();
 				systick_delay_ms(1000);
 				currentCali_server_start();
-				systick_init_timer( &delay_timer, 1000 );
+				systick_init_timer( &delay_timer, 2000 );
 				_LOG("******** STEP_S2_ON : Start\n");
 			}else{
 				//check result
@@ -1025,7 +1042,7 @@ void service_even()
 						_LOG("STEP_S2_ON : no current data\n");
 					}else{
 						value = current_sum/current_counter;
-						if( value > 0.00009 && value <= 0.001 ){
+						if( value >= 0.0000 && value <= 0.001 ){
 							test_step++;
 							systick_init_timer( &delay_timer, 500); // 500ms for switch origan status for next test
 							VALVE_S2_OFF();
@@ -1058,7 +1075,7 @@ void service_even()
 				}else{
 					if( current_counter > 0 ){
 						value = current_sum/current_counter;
-						if( value > 0.00009 && value <= 0.001 ){
+						if( value > 0.0000 && value <= 0.001 ){
 							test_step++;
 							systick_init_timer( &delay_timer, 1);
 							PASS_LED_ON();
