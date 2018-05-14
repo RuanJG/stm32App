@@ -20,7 +20,7 @@ Uart_t Uart1;
 Uart_t Uart2;
 Uart_t Uart3;
 
-#define CONSOLE_UART &Uart3
+//#define CONSOLE_UART &Uart3
 #define PC_UART &Uart3
 #define IAP_UART &Uart3
 #define METER_UART &Uart1
@@ -118,6 +118,7 @@ void ADC_Configuration ()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);	
+	
 
 	
 	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
@@ -234,6 +235,7 @@ int get_voice_db()
 	//db = (( adc*3300/4096 ) / 3162 ) *94; // 94: 1Pa=94db ; 3162: 3162mV/Pa 
 	//db = adc*3300*94*2/4096/3801; // adc*0.02395
 	db = adc*0.039848;
+	//_LOG("db=%d",db);
 	
 	//db = (adc*3300)/4096;
 	//sprintf(buffer,"db=%d",db);
@@ -409,8 +411,8 @@ void switch_det_event()
 	
 	if( sw_counter >= SW_MAX_COUNT ){
 		//_LOG("sw=%d\n",sw_value);
-		if( sw_value >= SW_MAX_COUNT ){
-		//if( sw_value == 0 ){
+		//if( sw_value >= SW_MAX_COUNT ){
+		if( sw_value == 0 ){
 			sw_on_tag = 1;
 		}else {
 			sw_on_tag = 0;
@@ -543,7 +545,7 @@ void config_init()
 
 
 
-
+#define MACHINE_NO   0x00 // 0x10:no1 machine
 
 // packget  head tag 
 #define USER_DATA_TAG	1
@@ -597,7 +599,7 @@ void userStation_log( char * str ){
 	if( strlen( str ) > 30 )
 		return;
 	
-	buffer[0] = USER_LOG_TAG;
+	buffer[0] = MACHINE_NO|USER_LOG_TAG;
 	memcpy( &buffer[1], str , strlen(str) );
 	
 	if( 0 == userStation_send( buffer, strlen(str)+1 ) ){
@@ -613,7 +615,7 @@ void userStation_report(int db, float current, int work_counter, int error)
 	
 	unsigned char buffer[11];
 	
-	buffer[0]= USER_DATA_TAG;
+	buffer[0]= MACHINE_NO|USER_DATA_TAG;
 	memcpy( &buffer[1], (unsigned char*) &db, 4 ) ;
 	memcpy( &buffer[5], (unsigned char*) &current , 4 ); 
 	buffer[9]= work_counter;
@@ -632,7 +634,7 @@ void userStation_send_config()
 {
 	unsigned char buffer[18];
 	
-	buffer[0]= USER_CONFIG_TAG;
+	buffer[0]= MACHINE_NO|USER_CONFIG_TAG;
 	buffer[1] = g_config.config_avaliable; // 1 available
 	memcpy( &buffer[2], (unsigned char*) &g_config.current_max, 4 ) ;
 	memcpy( &buffer[6], (unsigned char*) &g_config.current_min , 4 ); 
@@ -786,23 +788,37 @@ int miniMeterCoder_prase( miniMeterCoder_t * coder, unsigned char data )
 
 
 miniMeterCoder_t currentMeter;
+volatile int meter_started = 0;
 
 void miniMeter_init()
 {
 	miniMeterCoder_init( &currentMeter );
 }
 
+
+void miniMeter_clear()
+{
+	
+	Uart_Clear_Rx(METER_UART);
+	
+}
+
 void miniMeter_start()
 {
 	unsigned char packget[]={0x88,0xAE,0x00,0x21};
 	
+	if ( meter_started == 1 ) return;
+	meter_started = 1;
+	miniMeter_clear();
 	Uart_Put(METER_UART, packget, sizeof( packget) );
 }
 
 void miniMeter_stop()
 {
 	unsigned char packget[]={0x88,0xAE,0x00,0x01};
-	
+
+	if ( meter_started == 0 ) return;
+	meter_started = 0;
 	Uart_Put(METER_UART, packget, sizeof( packget) );
 }
 
@@ -812,6 +828,8 @@ void miniMeter_toggle()
 	
 	Uart_Put(METER_UART, packget, sizeof( packget) );
 }
+
+
 
 
 void miniMeter_test_even()
@@ -825,9 +843,9 @@ void miniMeter_test_even()
 	
 	for( i=0; i< count ; i++){
 		if( 1 == miniMeterCoder_prase( &currentMeter , packget[i] ) ){
-			//sprintf(buffer,"%3.5fV",currentMeter.value);
-			//userStation_log(buffer);
-			_LOG( "%.5fV" , currentMeter.value);
+			sprintf(buffer,"%3.5fV",currentMeter.value);
+			userStation_log(buffer);
+			//_LOG( "%.5fV" , currentMeter.value);
 		}
 	}
 }
@@ -838,20 +856,23 @@ void miniMeter_test_even()
 int service_getCurrent( float *A)
 {
 	unsigned char packget[8];
-	int i,count;
+	int i,count,res;
+	
+	res = 0;
 
 	count = Uart_Get( METER_UART , packget, sizeof( packget ) );
-	if( count == 0 ) return 0;
+	if( count == 0 ) return res;
 	
 	for( i=0; i< count ; i++){
 		if( 1 == miniMeterCoder_prase( &currentMeter , packget[i] ) ){
 			//sprintf(buffer,"%3.5fV",currentMeter.value);
 			//userStation_log(buffer);
-			//_LOG( "%.5fV" , currentMeter.value);
+			//_LOG( "service_getCurrent: %.5fV" , currentMeter.value);
+			res = 1;
 			*A = currentMeter.value;
 		}
 	}
-	return 1;
+	return res;
 }
 
 #endif
@@ -1071,7 +1092,7 @@ void server_init()
 void server_start()
 {
 	unsigned char tag;
-	int delay_ms = 3000;
+	int delay_ms = 2500;
 	
 	//delay 10000ms for start read data
 	systick_init_timer( &work_timer, delay_ms);
@@ -1092,7 +1113,7 @@ void server_start()
 	led_off(LED_CURRENT_ERROR_ID);
 	
 	#if USING_MINIMETER
-	miniMeter_start();
+	//miniMeter_start();
 	#endif
 	
 	#if USING_VICTORMETER 
@@ -1166,6 +1187,10 @@ void server_runtime()
 	if( server_collect_over == 1 ) 
 		return ;
 	
+	#if USING_MINIMETER
+	miniMeter_start();
+	#endif
+	
 	//has collected enought records
 	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
 		server_collect_over = 1;
@@ -1179,8 +1204,8 @@ void server_runtime()
 	
 	//get current by uart
 	if( 0 == service_getCurrent( &current_array[ work_counter ] ) ){
-		_LOG("server_runtime: get current false\n");
-		userStation_log("read current false");
+		//_LOG("server_runtime: get current false\n");
+		//userStation_log("read current false");
 		res = 0;
 	}
 	
@@ -1254,7 +1279,7 @@ void heart_led_even()
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
 		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
 		
-		get_voice_db();
+		//get_voice_db();
 	}		
 }
 

@@ -6,13 +6,6 @@ void switcher_init(struct switcher* sw, int maxcount, int default_level, int pre
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
-	sw->state = default_level; // default state
-	sw->press_level = press_level ; // gpio=0, when press 
-	sw->GPIOx = GPIOX;
-	sw->GPIO_Pin = GPIO_Pin_x;
-	sw->press_handler = press_handler;
-	sw->release_handler = release_handler;
-	
 	if( sw->GPIOx == GPIOA )
 			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
 	else if ( sw->GPIOx == GPIOB )
@@ -25,10 +18,17 @@ void switcher_init(struct switcher* sw, int maxcount, int default_level, int pre
 			RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOE, ENABLE);
 	
 	GPIO_InitStructure.GPIO_Pin = sw->GPIO_Pin;
-	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN_FLOATING ;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode = default_level==0? GPIO_Mode_IPD : (default_level==1? GPIO_Mode_IPU:GPIO_Mode_IN_FLOATING) ;
 	GPIO_Init(sw->GPIOx, &GPIO_InitStructure);
 	
+	
+	sw->GPIOx = GPIOX;
+	sw->GPIO_Pin = GPIO_Pin_x;
+	sw->state = default_level; // GPIO_ReadInputDataBit( sw->GPIOx, sw->GPIO_Pin );
+	sw->press_level = press_level ; // gpio=0, when press 
+	sw->press_handler = press_handler;
+	sw->release_handler = release_handler;
 	
 	sw->counter = 0;
 	sw->sum = 0;

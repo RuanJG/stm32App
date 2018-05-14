@@ -481,6 +481,7 @@ void miniMeterCoder_clear( miniMeterCoder_t * coder )
 	coder->index = 0;
 	if( coder->uart != NULL )
 		while(  Uart_Get( coder->uart	, tmp, sizeof(tmp) ) >= sizeof(tmp) );
+		//Uart_Clear_Rx( coder->uart );
 }
 
 
@@ -746,7 +747,7 @@ void EXTI1_IRQHandler()
 
 
 #define SW_INTERVAL_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
-#define SW_INTERVAL_MS 5
+#define SW_INTERVAL_MS 20
 systick_time_t sw_timer;
 volatile struct switcher left_key,right_key;
 
