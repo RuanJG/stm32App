@@ -556,6 +556,7 @@ void config_init()
 #define USER_CMD_CURRENT_MAXMIN_TAG 5
 #define USER_CMD_VOICE_MAXMIN_TAG 6
 #define USER_CMD_GET_MAXMIN_TAG 7
+#define USER_ACK_TAG 8
 
 //packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
@@ -573,6 +574,16 @@ protocol_t encoder;
 protocol_t decoder;
 volatile unsigned char userStation_mode;
 
+
+#define ENABLE_REPORT_RESEND 1
+unsigned char report_buffer[11];
+volatile char report_listen_tag;
+systick_time_t report_listen_timer;
+
+
+
+
+
 void userStation_init()
 {
 	userUart = PC_UART;
@@ -580,6 +591,7 @@ void userStation_init()
 	protocol_init( &encoder );
 	protocol_init( &decoder );
 	
+	report_listen_tag = 0;
 }
 
 int userStation_send( unsigned char *data , int len)
@@ -593,10 +605,11 @@ int userStation_send( unsigned char *data , int len)
 	}
 }
 
+
+unsigned char buffer[ 256 ];
 void userStation_log( char * str ){
-	unsigned char buffer[ 32 ];
 	
-	if( strlen( str ) > 30 )
+	if( strlen( str ) > sizeof(buffer) )
 		return;
 	
 	buffer[0] = MACHINE_NO|USER_LOG_TAG;
@@ -609,26 +622,44 @@ void userStation_log( char * str ){
 }
 
 
+
+void userStation_report_resend_start()
+{
+	report_listen_tag = 1;
+	systick_init_timer( &report_listen_timer , 200);
+}
+
+
+
 void userStation_report(int db, float current, int work_counter, int error)
 {
 	//tag[0]+db[0]db[1]db[2]db[3]+current[....]+work_current[0]+error[0]  ; work_counter is the count of the records
 	
-	unsigned char buffer[11];
 	
-	buffer[0]= MACHINE_NO|USER_DATA_TAG;
-	memcpy( &buffer[1], (unsigned char*) &db, 4 ) ;
-	memcpy( &buffer[5], (unsigned char*) &current , 4 ); 
-	buffer[9]= work_counter;
-	buffer[10] = error;
+	
+	report_buffer[0]= MACHINE_NO|USER_DATA_TAG;
+	memcpy( &report_buffer[1], (unsigned char*) &db, 4 ) ;
+	memcpy( &report_buffer[5], (unsigned char*) &current , 4 ); 
+	report_buffer[9]= work_counter;
+	report_buffer[10] = error;
 	
 
-	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
-		_LOG("userStation_report: report false\n");
-		userStation_log("userStation_report: report false\n");
+	if( 0 == userStation_send( report_buffer, sizeof(report_buffer) ) ){
+		_LOG("userStation_report: send false\n");
+		userStation_log("userStation_report: send false\n");
+	}
+	
+	if( error != 0 || work_counter != 0 ){
+		userStation_report_resend_start();
+	}else{
+		report_listen_tag = 0;
 	}
 	
 	_LOG("report: db=%d, current=%f , count=%d, error=%d\n", db, current, work_counter ,error);
 }
+
+
+
 
 void userStation_send_config()
 {
@@ -693,9 +724,28 @@ void userStation_handleMsg( unsigned char *data, int len)
 			userStation_send_config();
 			break;
 		
+		case USER_ACK_TAG:
+			if( report_listen_tag == 1 )
+				report_listen_tag = 0;
+			break;
 		default:
 			break;
 	}
+}
+
+void userStation_report_resend_event()
+{
+	if( ENABLE_REPORT_RESEND == 0 ) return;
+	
+	if( report_listen_tag == 0 ) return;
+	
+	if( systick_check_timer( &report_listen_timer ) ){
+		if( 0 == userStation_send( report_buffer, sizeof(report_buffer) ) ){
+			_LOG("userStation_report_resend_event: send false\n");
+			userStation_log("userStation_report_resend_event: send false\n");
+		}
+	}
+	
 }
 
 void userStation_listen_even()
@@ -711,6 +761,7 @@ void userStation_listen_even()
 		}
 	}
 	
+	userStation_report_resend_event();
 }
 
 
@@ -1274,6 +1325,7 @@ void heart_led_init()
 void heart_led_even()
 {
 	static BitAction led = Bit_RESET;
+	unsigned char tag;
 	
 	if( systick_check_timer( &heart_led_timer ) ){
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
@@ -1282,6 +1334,38 @@ void heart_led_even()
 		//get_voice_db();
 	}		
 }
+
+
+
+
+systick_time_t user_station_loop_test_timer;
+
+void user_station_loop_test_init()
+{
+	systick_init_timer(&user_station_loop_test_timer, 50);
+	
+}
+volatile int testcount=0;
+void user_station_loop_test_even()
+{
+	unsigned char tag;
+	
+	if( report_listen_tag == 0 &&  systick_check_timer( &user_station_loop_test_timer ) ){
+		if( testcount >= 50 ){
+			userStation_report( 40, 0.5 , 50, 0 ); 
+			testcount = 0;
+		}else if( testcount == 0 ){
+			tag = USER_START_TAG;	
+			userStation_send( &tag , 1 );
+			systick_delay_us(500000);
+			testcount ++;	
+		}else{
+			userStation_report( 40, 0.5 , 0, 0 );
+			testcount ++;			
+		}
+	}		
+}
+
 
 
 
@@ -1313,7 +1397,7 @@ void app_init()
 	userStation_init();
 	server_init();
 	config_init();
-	
+	//user_station_loop_test_init();
 	//systick_delay_us(1000000);
 	//miniMeter_start();
 
@@ -1328,6 +1412,7 @@ void app_event()
 	userStation_listen_even();
 	heart_led_even();
 	//miniMeter_test_even();
+	//user_station_loop_test_even();
 	#endif
 }
 
