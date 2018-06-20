@@ -388,7 +388,7 @@ void switch_det_config()
 
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;//GPIO_Mode_IN_FLOATING;//GPIO_Mode_IPD;//GPIO_Mode_IN_FLOATING;GPIO_Mode_AIN
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);
 	
@@ -557,6 +557,7 @@ void config_init()
 #define USER_CMD_VOICE_MAXMIN_TAG 6
 #define USER_CMD_GET_MAXMIN_TAG 7
 #define USER_ACK_TAG 8
+#define USER_CMD_SET_SW_STATUS_TAG 9
 
 //packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
@@ -566,7 +567,7 @@ void config_init()
 //work_mode value
 #define USER_MODE_ONLINE 1
 #define USER_MODE_OFFLINE 2
-
+#define USER_MODE_SLAVER 3 
 
 
 Uart_t *userUart=NULL;
@@ -575,7 +576,7 @@ protocol_t decoder;
 volatile unsigned char userStation_mode;
 
 
-#define ENABLE_REPORT_RESEND 1
+#define ENABLE_REPORT_RESEND 0
 unsigned char report_buffer[11];
 volatile char report_listen_tag;
 systick_time_t report_listen_timer;
@@ -728,6 +729,14 @@ void userStation_handleMsg( unsigned char *data, int len)
 			if( report_listen_tag == 1 )
 				report_listen_tag = 0;
 			break;
+			
+		case USER_CMD_SET_SW_STATUS_TAG:
+			if( len == 2 ){
+				if( userStation_mode == USER_MODE_SLAVER ){
+					sw_on_tag = data[1];
+				}
+			}
+			break;
 		default:
 			break;
 	}
@@ -854,24 +863,6 @@ void miniMeter_clear()
 	
 }
 
-void miniMeter_start()
-{
-	unsigned char packget[]={0x88,0xAE,0x00,0x21};
-	
-	if ( meter_started == 1 ) return;
-	meter_started = 1;
-	miniMeter_clear();
-	Uart_Put(METER_UART, packget, sizeof( packget) );
-}
-
-void miniMeter_stop()
-{
-	unsigned char packget[]={0x88,0xAE,0x00,0x01};
-
-	if ( meter_started == 0 ) return;
-	meter_started = 0;
-	Uart_Put(METER_UART, packget, sizeof( packget) );
-}
 
 void miniMeter_toggle()
 {
@@ -925,6 +916,42 @@ int service_getCurrent( float *A)
 	}
 	return res;
 }
+
+
+
+int miniMeter_start()
+{
+	unsigned char packget[]={0x88,0xAE,0x00,0x21};
+	float A;
+	int retry = 5;
+	
+	
+	if ( meter_started == 1 ) return 1;
+	miniMeter_clear();
+	
+	while( 0 < retry-- ){
+		Uart_Put(METER_UART, packget, sizeof( packget) );
+		systick_delay_ms(300);
+		if( 1 == service_getCurrent( &A) ){
+			meter_started = 1;
+			return 1;
+		}
+	}
+	
+	return 0;
+}
+
+void miniMeter_stop()
+{
+	unsigned char packget[]={0x88,0xAE,0x00,0x01};
+
+	//return ;
+	
+	if ( meter_started == 0 ) return;
+	meter_started = 0;
+	//Uart_Put(METER_UART, packget, sizeof( packget) );
+}
+
 
 #endif
 
@@ -1163,9 +1190,7 @@ void server_start()
 	led_off(LED_VOICE_ERROR_ID);
 	led_off(LED_CURRENT_ERROR_ID);
 	
-	#if USING_MINIMETER
-	//miniMeter_start();
-	#endif
+
 	
 	#if USING_VICTORMETER 
 	if( 0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
@@ -1238,17 +1263,23 @@ void server_runtime()
 	if( server_collect_over == 1 ) 
 		return ;
 	
-	#if USING_MINIMETER
-	miniMeter_start();
-	#endif
-	
 	//has collected enought records
 	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
 		server_collect_over = 1;
 		server_stop();
-		//server_status = 0;
+		server_status = 2;
 		return ;
 	}
+	
+	
+	#if USING_MINIMETER
+	if( 0 == miniMeter_start() ){
+		_LOG(" miniMeter start error \n");
+		userStation_log(" miniMeter start error \n");
+	}
+	#endif
+	
+
 	
 	
 	res = 1;
@@ -1256,7 +1287,7 @@ void server_runtime()
 	//get current by uart
 	if( 0 == service_getCurrent( &current_array[ work_counter ] ) ){
 		//_LOG("server_runtime: get current false\n");
-		//userStation_log("read current false");
+		userStation_log("read current false");
 		res = 0;
 	}
 	
@@ -1298,7 +1329,12 @@ void server_event()
 	}else{
 		
 		if( server_status == 1 ){
-			//server_stop();
+			server_stop();
+			server_status = 0;
+		}else if( server_status == 2){
+			// has call server_stop , as collection has finish earlier
+			server_status = 0;
+		}else{
 			server_status = 0;
 		}
 		
@@ -1318,20 +1354,24 @@ void heart_led_init()
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
 	
-	systick_init_timer(&heart_led_timer, 500);
+	systick_init_timer(&heart_led_timer, 1000);
 	
 }
 
 void heart_led_even()
 {
 	static BitAction led = Bit_RESET;
-	unsigned char tag;
+	static unsigned char tag = 0;
+	char buffer[16];
 	
 	if( systick_check_timer( &heart_led_timer ) ){
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
 		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
-		
+		//Uart_Put(PC_UART,"test",4);
 		//get_voice_db();
+		sprintf(buffer,"%d=sw:%d,ss:%d",tag++,sw_on_tag,server_status);
+		userStation_log(buffer);
+		tag %= 10;
 	}		
 }
 
@@ -1364,6 +1404,22 @@ void user_station_loop_test_even()
 			testcount ++;			
 		}
 	}		
+}
+
+
+void cmd_even()
+{
+	unsigned char buffer[8];
+	unsigned char i, len;
+	
+	len = USB_RxRead( buffer, 8 );
+	
+	if( len == 0 ) return;
+		if( buffer[0] == '1' ){
+			sw_on_tag = 1;
+		}else if( buffer[0] == '0' ){
+			sw_on_tag = 0;
+		}
 }
 
 
@@ -1404,15 +1460,20 @@ void app_init()
 }
 
 
+
+
+
 void app_event()
 {
 	#if 1
-	switch_det_event();
+	if( userStation_mode != USER_MODE_SLAVER)
+		switch_det_event();
 	server_event();
 	userStation_listen_even();
 	heart_led_even();
 	//miniMeter_test_even();
 	//user_station_loop_test_even();
+	//cmd_even();
 	#endif
 }
 
