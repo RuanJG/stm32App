@@ -927,6 +927,14 @@ void service_even()
 			break;
 		}
 		case STEP_CHECK_LED_TOGGLE:{
+			
+			if( 1 ){
+				test_step++;
+				systick_init_timer( &delay_timer, 1);
+				_LOG("ignore STEP_CHECK_LED_TOGGLE \n");
+				break;
+			}
+		
 			if( !is_check_led_toggle_server_start() ){
 				check_led_toggle_server_init();
 				systick_init_timer( &delay_timer, 3000 );

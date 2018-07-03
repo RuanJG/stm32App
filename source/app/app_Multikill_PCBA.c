@@ -93,10 +93,10 @@ void Uart_init()
 
 
 
-#define FALSE_LED_ON() GPIOB->BSRR = GPIO_Pin_13;
-#define FALSE_LED_OFF() GPIOB->BRR = GPIO_Pin_13;
-#define PASS_LED_ON() 	GPIOB->BSRR = GPIO_Pin_12;
-#define PASS_LED_OFF()	GPIOB->BRR = GPIO_Pin_12;
+#define FALSE_LED_ON() GPIOB->BSRR = GPIO_Pin_12;
+#define FALSE_LED_OFF() GPIOB->BRR = GPIO_Pin_12;
+#define PASS_LED_ON() 	GPIOB->BSRR = GPIO_Pin_13;
+#define PASS_LED_OFF()	GPIOB->BRR = GPIO_Pin_13;
 #define RUNING_LED_ON()	GPIOB->BSRR = GPIO_Pin_11;
 #define RUNING_LED_OFF()	GPIOB->BRR = GPIO_Pin_11;
 
@@ -338,8 +338,24 @@ void cmd_even()
 	if( len == 0 ) return;
 		if( buffer[0] == '1' ){
 			//sw_on_tag = 1;
-		}else if( buffer[0] == '0' ){
+			//PASS_LED_ON();
+			if( buffer[1] == '1'){ 
+				PASS_LED_ON();
+			}else PASS_LED_OFF();
+			USB_TxWrite(buffer,1);
+		}else if( buffer[0] == '2' ){
 			//sw_on_tag = 0;
+			if( buffer[1] == '1'){ 
+				RUNING_LED_ON();
+			}else RUNING_LED_OFF();
+			USB_TxWrite(buffer,1);
+		}else if( buffer[0] == '3' ){
+			//sw_on_tag = 0;
+			//FALSE_LED_ON();
+			if( buffer[1] == '1'){ 
+				FALSE_LED_ON();
+			}else FALSE_LED_OFF();
+			USB_TxWrite(buffer,1);
 		}
 }
 
@@ -350,6 +366,8 @@ void cmd_even()
 
 
 volatile int server_step = 0;
+volatile int server_testerror = 0;
+volatile int server_A_over_count = 0;
 
 void server_init()
 {
@@ -366,21 +384,57 @@ void server_even()
 	//check the current in realtime
 	if( 1 == miniMeter_getCurrent( &A ) )
 	{
-		//_LOG("Current:%f\n",A);
-		if( A >= 0.8 ){
-			FALSE_LED_ON();
-			PASS_LED_OFF();
+		_LOG("Current:%f\n",A);
+		if( A >= 0.80 ){
+			server_A_over_count ++;
+			if( server_A_over_count > 6 ){
+				FALSE_LED_ON();
+				PASS_LED_OFF();
+				server_testerror = 1;
+			}
 		}
 	}
 	
 	
 	//check the testing loop 
-	if( start_key.state != start_key.press_level ){
+	if( start_key.state != start_key.press_level )
+	{
 		server_step = 0;
+		server_testerror = 0;
+		server_A_over_count = 0;
 		RUNING_LED_OFF();
+		FALSE_LED_OFF();
+		PASS_LED_OFF();
 		return;
 	}
 	RUNING_LED_ON();
+	
+	switch( server_step )
+	{
+		case 0:
+		{
+			//detect motor single drive back 
+			
+		}break;
+		
+		case 1:
+		{
+			//detect motor dual  drive back
+			
+		}break;
+		
+		case 2:
+		{
+			//detect all motor drive forward and back ; and finish
+			
+		}break;
+		
+		default:
+		{
+			_LOG("error: unknow step\n");
+		}break;
+		
+	}
 	
 }
 
@@ -406,6 +460,7 @@ void app_init()
 
 	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
 	console_init( CONSOLE_USB_TYPE ,NULL );
+	led_pin_config();
 	switch_init();
 	heart_led_init();
 	server_init();

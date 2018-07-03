@@ -449,6 +449,7 @@ struct config {
 	float current_min;
 	int db_max;
 	int db_min;
+	int machine_no;
 };
 volatile struct config g_config;
 
@@ -531,6 +532,7 @@ void config_init()
 		g_config.current_min = 0.35 ; //A
 		g_config.db_max = 65;
 		g_config.db_min = 30;
+		g_config.machine_no = 'X';
 		config_save();
 	}
 }
@@ -545,8 +547,6 @@ void config_init()
 
 
 
-#define MACHINE_NO   0x00 // 0x10:no1 machine
-
 // packget  head tag 
 #define USER_DATA_TAG	1
 #define USER_LOG_TAG	2
@@ -558,6 +558,7 @@ void config_init()
 #define USER_CMD_GET_MAXMIN_TAG 7
 #define USER_ACK_TAG 8
 #define USER_CMD_SET_SW_STATUS_TAG 9
+#define USER_CMD_SET_MACHINE_NO 10 
 
 //packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
@@ -613,7 +614,7 @@ void userStation_log( char * str ){
 	if( strlen( str ) > sizeof(buffer) )
 		return;
 	
-	buffer[0] = MACHINE_NO|USER_LOG_TAG;
+	buffer[0] = USER_LOG_TAG;
 	memcpy( &buffer[1], str , strlen(str) );
 	
 	if( 0 == userStation_send( buffer, strlen(str)+1 ) ){
@@ -638,7 +639,7 @@ void userStation_report(int db, float current, int work_counter, int error)
 	
 	
 	
-	report_buffer[0]= MACHINE_NO|USER_DATA_TAG;
+	report_buffer[0]= USER_DATA_TAG;
 	memcpy( &report_buffer[1], (unsigned char*) &db, 4 ) ;
 	memcpy( &report_buffer[5], (unsigned char*) &current , 4 ); 
 	report_buffer[9]= work_counter;
@@ -664,14 +665,15 @@ void userStation_report(int db, float current, int work_counter, int error)
 
 void userStation_send_config()
 {
-	unsigned char buffer[18];
+	unsigned char buffer[19];
 	
-	buffer[0]= MACHINE_NO|USER_CONFIG_TAG;
+	buffer[0]= USER_CONFIG_TAG;
 	buffer[1] = g_config.config_avaliable; // 1 available
 	memcpy( &buffer[2], (unsigned char*) &g_config.current_max, 4 ) ;
 	memcpy( &buffer[6], (unsigned char*) &g_config.current_min , 4 ); 
 	memcpy( &buffer[10], (unsigned char*) &g_config.db_max, 4 ) ;
 	memcpy( &buffer[14], (unsigned char*) &g_config.db_min , 4 ); 
+	buffer[18] = g_config.machine_no;
 	
 	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
 		_LOG("send config false\n");
@@ -737,6 +739,16 @@ void userStation_handleMsg( unsigned char *data, int len)
 				}
 			}
 			break;
+			
+		case USER_CMD_SET_MACHINE_NO:
+			if( len == 2 ){
+				g_config.machine_no = data[1];
+				_LOG("set Machine No =%c\n",data[1]);
+				config_save();
+				userStation_send_config();
+			}
+			break;
+		
 		default:
 			break;
 	}
@@ -1390,9 +1402,9 @@ void user_station_loop_test_even()
 {
 	unsigned char tag;
 	
-	if( report_listen_tag == 0 &&  systick_check_timer( &user_station_loop_test_timer ) ){
+	if( sw_on_tag==1 &&  systick_check_timer( &user_station_loop_test_timer ) ){
 		if( testcount >= 50 ){
-			userStation_report( 40, 0.5 , 50, 0 ); 
+			userStation_report( 40, 0.444444 , 50, 0 ); 
 			testcount = 0;
 		}else if( testcount == 0 ){
 			tag = USER_START_TAG;	
@@ -1400,7 +1412,7 @@ void user_station_loop_test_even()
 			systick_delay_us(500000);
 			testcount ++;	
 		}else{
-			userStation_report( 40, 0.5 , 0, 0 );
+			userStation_report( 40, 0.44445 , 0, 0 );
 			testcount ++;			
 		}
 	}		
@@ -1416,9 +1428,11 @@ void cmd_even()
 	
 	if( len == 0 ) return;
 		if( buffer[0] == '1' ){
-			sw_on_tag = 1;
+			//sw_on_tag = 1;
+			//userStation_report( 40, 0.44445 , 0, 0 );
 		}else if( buffer[0] == '0' ){
-			sw_on_tag = 0;
+			//sw_on_tag = 0;
+			//userStation_report( 40, 0.444444 , 50, 0 ); 
 		}
 }
 

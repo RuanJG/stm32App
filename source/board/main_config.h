@@ -31,9 +31,9 @@
 #define BOARD_IR_TESTBOARD	0
 #define BOARD_MOTOR 				0
 #define BOARD_QIPAD					0
-#define BOARD_Trex_V2				0
+#define BOARD_Trex_V2				1
 #define BOARD_MOTOR_COOPERATE 0
-#define BOARD_MULTIKILL_PCBA 1
+#define BOARD_MULTIKILL_PCBA 0
 
 
 
@@ -72,7 +72,6 @@
 //******** config iap 
 #define BOARD_HAS_IAP  1
 #define IAP_PORT_UART  1
-#define IAP_PORT_CAN1  0  // not support now
 #define IAP_PORT_USB   1
 //******** config usb(can1)
 #define BOARD_USING_USB 1
