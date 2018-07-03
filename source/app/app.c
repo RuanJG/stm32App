@@ -458,6 +458,7 @@ struct config {
 	float current_min;
 	int db_max;
 	int db_min;
+	int machine_no;
 };
 volatile struct config g_config;
 
@@ -540,6 +541,7 @@ void config_init()
 		g_config.current_min = 0.35 ; //A
 		g_config.db_max = 65;
 		g_config.db_min = 30;
+		g_config.machine_no = 'X';
 		config_save();
 	}
 }
@@ -565,6 +567,7 @@ void config_init()
 #define USER_CMD_CURRENT_MAXMIN_TAG 5
 #define USER_CMD_VOICE_MAXMIN_TAG 6
 #define USER_CMD_GET_MAXMIN_TAG 7
+#define USER_CMD_SET_MACHINE_NO 10
 
 //packget body : result error value
 #define USER_RES_CURRENT_FALSE_FLAG 1
@@ -640,7 +643,7 @@ void userStation_report(int db, float current, int work_counter, int error)
 
 void userStation_send_config()
 {
-	unsigned char buffer[18];
+	unsigned char buffer[19];
 	
 	buffer[0]= USER_CONFIG_TAG;
 	buffer[1] = g_config.config_avaliable; // 1 available
@@ -648,6 +651,7 @@ void userStation_send_config()
 	memcpy( &buffer[6], (unsigned char*) &g_config.current_min , 4 ); 
 	memcpy( &buffer[10], (unsigned char*) &g_config.db_max, 4 ) ;
 	memcpy( &buffer[14], (unsigned char*) &g_config.db_min , 4 ); 
+	buffer[18] = g_config.machine_no;
 	
 	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
 		_LOG("send config false\n");
@@ -701,6 +705,15 @@ void userStation_handleMsg( unsigned char *data, int len)
 			userStation_send_config();
 			break;
 		
+		case USER_CMD_SET_MACHINE_NO:
+			if( len == 2 ){
+				g_config.machine_no = data[1];
+				_LOG("set Machine No =%c\n",data[1]);
+				config_save();
+				userStation_send_config();
+			}
+			break;
+
 		default:
 			break;
 	}
