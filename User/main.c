@@ -1,5 +1,8 @@
 #include "stm32f0xx.h" 
 #include "stdio.h"
+#include "systick.h"
+#include "switcher.h"
+
 
 void SystemCoreClockConfigure(void) {
 
@@ -117,7 +120,68 @@ void USART2_SendBuf(uint8_t *pBuf, uint32_t u32Len)
 
 
 
+
+
+/// led
+
+#define LED_PASS_ON() GPIO_SetBits(GPIOC,GPIO_Pin_7)
+#define LED_PASS_OFF() GPIO_ResetBits(GPIOC,GPIO_Pin_7)
+#define LED_FAILUE_ON() GPIO_SetBits(GPIOC,GPIO_Pin_6)
+#define LED_FAILUE_OFF() GPIO_ResetBits(GPIOC,GPIO_Pin_6)
+
+systick_time_t led_timer;
+volatile int led_flash;
+
+void led_init()
+{
+	GPIO_InitTypeDef GPIO_Initialize;
+	systick_init_timer( &led_timer, 300);
+	
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC,ENABLE);
+	
+	GPIO_Initialize.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_Initialize.GPIO_OType = GPIO_OType_PP;
+	GPIO_Initialize.GPIO_Pin = GPIO_Pin_7;
+	GPIO_Initialize.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	GPIO_Initialize.GPIO_Speed = GPIO_Speed_Level_3;
+	GPIO_Init(GPIOC,&GPIO_Initialize);
+	
+	GPIO_Initialize.GPIO_Pin = GPIO_Pin_6;
+	GPIO_Init(GPIOC,&GPIO_Initialize);
+	GPIO_SetBits(GPIOC,GPIO_Pin_6);
+	
+	led_flash = 0;
+	LED_PASS_ON();
+	LED_FAILUE_OFF();
+	
+}
+	
+void led_event()
+{
+	if( led_flash == 1  && systick_check_timer(&led_timer) ){
+		if( GPIO_ReadInputDataBit(GPIOC,GPIO_Pin_6) == Bit_RESET){
+			LED_FAILUE_ON();
+			LED_PASS_ON();
+		}else {
+			LED_FAILUE_OFF();
+			LED_PASS_OFF();
+		}
+	}
+	
+}
+	
+	
+
+	
+
+
+
+
 //////////////////////////  PWM
+
+#define MOTOR_ON_PWM 9
+#define MOTOR_OFF_PWM 0
+
 
 // PA6 TIM3.1 PA7 TIM3.2
 
@@ -179,20 +243,20 @@ void PWM_Config(void){
 }
 
 
-void Motor1_Forward()
+void Motor1_Back ()
 {
 	// B
 	TIM_SetCompare2(TIM3,0);
 	// A
-	TIM_SetCompare1(TIM3,1);
+	TIM_SetCompare1(TIM3,MOTOR_ON_PWM);
 }
 
-void Motor1_Back()
+void Motor1_Forward()
 {
 	// A
 	TIM_SetCompare1(TIM3,0);
 	// B
-	TIM_SetCompare2(TIM3,1);
+	TIM_SetCompare2(TIM3,MOTOR_ON_PWM);
 
 }
 
@@ -204,20 +268,20 @@ void Motor1_Stop()
 	TIM_SetCompare2(TIM3,0);
 }
 
-void Motor2_Forward()
+void Motor2_Back()
 {
 	// B
 	TIM_SetCompare4(TIM3,0);
 	// A
-	TIM_SetCompare3(TIM3,1);
+	TIM_SetCompare3(TIM3,MOTOR_ON_PWM);
 }
 
-void Motor2_Back()
+void Motor2_Forward ()
 {
 	// A
 	TIM_SetCompare3(TIM3,0);
 	// B
-	TIM_SetCompare4(TIM3,1);
+	TIM_SetCompare4(TIM3,MOTOR_ON_PWM);
 
 }
 
@@ -234,10 +298,9 @@ void Motor2_Stop()
 
 
 
-
 #define ADC_SAMPLE_COUNT 32  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
 #define ADC_SAMPLE_CHANNEL_COUNT 1
-static unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
+volatile static unsigned short escADCConvert[ADC_SAMPLE_COUNT]={0};
 volatile int adc_updated;
 
 void ADC_Configuration ()
@@ -248,11 +311,12 @@ void ADC_Configuration ()
 	NVIC_InitTypeDef NVIC_InitStructure;
 	
 
+	ADC_DeInit(ADC1);  
+	
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);	
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1,ENABLE);
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC,ENABLE);
-
-	
+	RCC_ADCCLKConfig(RCC_ADCCLK_PCLK_Div4);
 	
 	GPIO_StructInit(&GPIO_InitStructure);
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
@@ -261,12 +325,13 @@ void ADC_Configuration ()
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOC, &GPIO_InitStructure);	
 
+	//GPIO_PinAFConfig(GPIOC, GPIO_PinSource5, GPIO_AF_1); 
 	
 	ADC_StructInit(&ADC_InitStructure);
 	ADC_InitStructure.ADC_Resolution  = ADC_Resolution_12b;
 	ADC_InitStructure.ADC_ContinuousConvMode  = ENABLE;
 	ADC_InitStructure.ADC_ExternalTrigConvEdge  = ADC_ExternalTrigConvEdge_None;
-	ADC_InitStructure.ADC_DataAlign  = ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_DataAlign  = ADC_DataAlign_Right; //ADC_DataAlign_Left
 	ADC_InitStructure.ADC_ScanDirection  = ADC_ScanDirection_Backward;
 	ADC_Init(ADC1, &ADC_InitStructure);  
 
@@ -274,6 +339,7 @@ void ADC_Configuration ()
        
 
 	ADC_GetCalibrationFactor(ADC1); 
+	ADC_DMACmd(ADC1,ENABLE);
 	ADC_Cmd(ADC1, ENABLE);     
 
 	while(!ADC_GetFlagStatus(ADC1, ADC_FLAG_ADRDY)); 
@@ -287,7 +353,7 @@ void ADC_Configuration ()
 	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
 	DMA_InitStructure.DMA_BufferSize = ADC_SAMPLE_CHANNEL_COUNT*ADC_SAMPLE_COUNT;
 	DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-	DMA_InitStructure.DMA_MemoryBaseAddr = (unsigned int)&escADCConvert;
+	DMA_InitStructure.DMA_MemoryBaseAddr = (unsigned int)escADCConvert;
 	DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
 	DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
 	DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
@@ -298,11 +364,14 @@ void ADC_Configuration ()
 	DMA_Init(DMA1_Channel1, &DMA_InitStructure);
 	DMA_ITConfig(DMA1_Channel1, DMA_IT_TC,ENABLE);
 	DMA_Cmd(DMA1_Channel1, ENABLE);
+	
+	
+	ADC_DMARequestModeConfig(ADC1, ADC_DMAMode_Circular);
 
 
   /* Enable DMA channel1 IRQ Channel */
 	NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel1_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPriority = 2;
+	NVIC_InitStructure.NVIC_IRQChannelPriority = 1;
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStructure);
 	
@@ -326,10 +395,21 @@ unsigned short Cali_Adc_Value()
 	unsigned int sensor = 0; 	
 	for(i=0;i<ADC_SAMPLE_COUNT;i++)
 	{
-		sensor += escADCConvert[i][0];
+		sensor += escADCConvert[i];
 	}
-	sensor = sensor>>5;
+	sensor = sensor/ADC_SAMPLE_COUNT;
+	//printf("adc=%d\n",sensor);
+	//printf("c=%d\n",(int)((float)sensor*0.39894));
+	//printf("adc=%d,v=%d\n",sensor,(int)(sensor*3300/4095/10.1));
 	return sensor;
+}
+
+__inline unsigned short get_adc_loop()
+{
+	//printf("try get adc\n");
+	while( adc_updated == 0 );
+	adc_updated = 0;
+	return Cali_Adc_Value();
 }
 
 #define ADC_MAX_VAL 0x0FFF
@@ -341,62 +421,71 @@ unsigned short Cali_Adc_Value()
 #define MOTOR_MAX_CURRENT_MILLIAMPS_FWD 450
 #define MOTOR_MAX_CURRENT_MILLIAMPS_REV 200
 
+//0.39894
 static const float motorMilliampsPerCount = ((1.0f / ((float) ADC_MAX_VAL)) * ADC_REFERENCE_VOLTAGE / MOTOR_CURENT_GAIN / MOTOR_CURRENT_RESISTOR_VALUE) * 1000.0f;
 unsigned short  ADC_MAX_FWD , ADC_MAX_REV;
 
-uint16_t current_to_adc(float c)
+__inline  uint16_t current_to_adc(float c)
 {
     return (uint16_t)(c / motorMilliampsPerCount);
 }
 
 
 
-volatile int current_direction = 0;  // 0=stop 1=fwd -1=back
-volatile int current_detect_enable = 0;
-
-void current_detection_init()
-{
-	ADC_MAX_FWD = current_to_adc(MOTOR_MAX_CURRENT_MILLIAMPS_FWD);
-	ADC_MAX_REV = current_to_adc(MOTOR_MAX_CURRENT_MILLIAMPS_REV); 
-	current_direction = 0;
-	current_detect_enable = 0;
-}
 
 
-void current_detection_event()
-{
-	uint16_t adc ;
-	
-	
-	if( 0 == current_detect_enable ) return;
-	
-	adc = Cali_Adc_Value();
 
-	if( current_direction == 1 ){
-		if( adc >= ADC_MAX_FWD ){
-			Motor1_Stop();
-			Motor2_Stop();
-		}		
-	}else if (current_direction == -1){
-		if( adc >= ADC_MAX_REV ){
-			Motor1_Stop();
-			Motor2_Stop();
-		}
-	}else{
 
-	}
-	
-}
 
 
 #define EN_POWER_ADC() GPIO_SetBits(GPIOC,GPIO_Pin_4)
 #define DIS_POWER_ADC() GPIO_ResetBits(GPIOC,GPIO_Pin_4)
+#define is_endStoper_Press (GPIO_ReadInputDataBit(GPIOC,GPIO_Pin_1) == Bit_RESET)
+#define is_motor_started (motor_status>0)
+#define is_motor_forward (motor_status ==1)
+#define is_motor_back  (motor_status == 2)
+#define CHASSIS_SHOOT_ADC 310
+
+volatile char motor_status;
+volatile systick_time_t motor_timer;
+volatile unsigned int motor_ms;
+
+volatile unsigned int adc_record ;
+volatile int adc_record_count;
+	
+
+void motor_control_start()
+{
+	motor_status = 1;
+	EN_POWER_ADC();
+	systick_delay_ms(5);
+	Motor2_Forward();
+	//Motor1_Forward();
+	motor_ms = systick_get_ms();
+	
+	led_flash = 1;
+	adc_record = 0;
+	adc_record_count = 0;
+}
+
+
+void motor_control_stop()
+{
+	motor_status = 0;
+	DIS_POWER_ADC();
+	Motor2_Stop();
+	Motor1_Stop();
+	
+	led_flash = 0;	
+}
 
 void motor_control_init()
 {
 	GPIO_InitTypeDef GPIO_Initialize;
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC,ENABLE);
 	
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC | RCC_AHBPeriph_GPIOF,ENABLE);
+	
+	//adc power control pin
 	GPIO_Initialize.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_Initialize.GPIO_OType = GPIO_OType_PP;
 	GPIO_Initialize.GPIO_Pin = GPIO_Pin_4;
@@ -404,49 +493,231 @@ void motor_control_init()
 	GPIO_Initialize.GPIO_Speed = GPIO_Speed_Level_3;
 	GPIO_Init(GPIOC,&GPIO_Initialize);
 	
+	// end stop key pin
+	GPIO_Initialize.GPIO_Mode = GPIO_Mode_IN;
+	GPIO_Initialize.GPIO_Pin = GPIO_Pin_1;
+	GPIO_Initialize.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Initialize.GPIO_Speed = GPIO_Speed_Level_3;
+	GPIO_Init(GPIOC,&GPIO_Initialize);
+	
+	//switch power
+	GPIO_Initialize.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_Initialize.GPIO_Pin = GPIO_Pin_0;
+	GPIO_Initialize.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Initialize.GPIO_Speed = GPIO_Speed_Level_3;
+	GPIO_Initialize.GPIO_OType = GPIO_OType_PP;
+	GPIO_Init(GPIOF,&GPIO_Initialize);
+	GPIO_SetBits(GPIOF,GPIO_Pin_0);
+	
+	motor_status = 0;
+	
+	PWM_Config();
+	
+	ADC_Configuration ();
+	
+	ADC_MAX_FWD = current_to_adc(MOTOR_MAX_CURRENT_MILLIAMPS_FWD);
+	ADC_MAX_REV = current_to_adc(MOTOR_MAX_CURRENT_MILLIAMPS_REV); 
+	
+	printf("FWD_ADC:%d, BACK_ADC:%d\n",ADC_MAX_FWD,ADC_MAX_REV);
+	
+	motor_control_stop();
+	
+}
+
+void motor_control_even()
+{
+	unsigned short adc;
+	int next=0;
+	unsigned int ms;
+	
+	if( !is_motor_started ) return;
+	
+	
+	next = 0;
+	if( is_motor_forward )
+	{
+		ms = systick_get_ms();
+
+		//check
+		if(  ms >=  (motor_ms+500)  )
+		{
+			adc = get_adc_loop();
+			if( adc > CHASSIS_SHOOT_ADC ) 
+			{
+				adc_record += adc;
+				adc_record_count ++;
+			}
+			if( adc >= ADC_MAX_FWD )
+			{
+				motor_control_stop();
+				LED_FAILUE_ON();
+				LED_PASS_OFF();
+			}else{				
+				if( ms >= ( motor_ms + 1500 ) )
+				{
+					if( adc_record_count > 1 ){
+						//have shoot 
+						next = 1;
+					}else{
+						// without shoot
+						motor_control_stop();
+						LED_FAILUE_ON();
+						LED_PASS_OFF();
+					}
+				}
+			}
+			
+		}
+		
+		//result
+		if( next == 1)
+		{
+			//printf("fw end\n");
+			Motor2_Stop();
+			Motor1_Stop();
+			motor_status = 2;
+			systick_delay_ms(500); //wait 0.5s
+			Motor2_Back();
+			//Motor1_Back();
+			motor_ms = systick_get_ms();
+			//printf("back start\n");
+		}
+		
+	}
+	else if( is_motor_back )
+	{
+		ms = systick_get_ms();
+		
+		if( ms > (motor_ms+150) )
+		{
+			adc = get_adc_loop();
+			if( adc >= ADC_MAX_REV )
+				next = 1;
+
+			if( ms >= ( motor_ms + 4000 ) )
+				next = 1;
+		}
+		
+		//result
+		if( next == 1)
+		{
+			//printf("back end\n");
+			motor_control_stop();
+			if( is_endStoper_Press ) // back in a right position
+			{
+				LED_PASS_ON();
+				LED_FAILUE_OFF();
+			}else{
+				LED_FAILUE_ON();
+				LED_PASS_OFF();
+			}
+
+		}
+				
+	}
+	else
+	{
+		printf("motor control : unknow status \n");
+		motor_control_stop();
+	}
+
+	
 }
 
 
 
-// switch detection
+#define SW_INTERVAL_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
+#define SW_INTERVAL_MS 5
+systick_time_t sw_timer;
+volatile struct switcher startButton;
 
-// server
+void switch_key_press_handler()
+{
+
+}
+
+void switch_key_release_handler()
+{
+	//printf("key press\n");
+	if( !is_motor_started )
+		motor_control_start();
+	else
+		motor_control_stop();
+}
+
+void switch_init()
+{
+	GPIO_InitTypeDef GPIO_Initialize;
+
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC | RCC_AHBPeriph_GPIOF,ENABLE);
+	//switch power
+	GPIO_Initialize.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_Initialize.GPIO_Pin = GPIO_Pin_0;
+	GPIO_Initialize.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Initialize.GPIO_Speed = GPIO_Speed_Level_3;
+	GPIO_Initialize.GPIO_OType = GPIO_OType_PP;
+	GPIO_Init(GPIOF,&GPIO_Initialize);
+	GPIO_SetBits(GPIOF,GPIO_Pin_0);
+	
+	switcher_init( &startButton, SW_INTERVAL_COUNT, 1 , 0 , GPIOC, GPIO_Pin_2, switch_key_press_handler , switch_key_release_handler);
+
+	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
+}
+
+__inline void switch_even()
+{
+	if( 0 == systick_check_timer( &sw_timer ) ) return;
+	
+	switcher_interval_check( &startButton );
+
+}
+
+
+
+
+void app_init()
+{
+	SystemCoreClockConfigure();
+	systick_init();
+	Usart_Init( 57600 );
+	led_init();
+	motor_control_init();
+	switch_init();
+}
+
+
+__inline void app_event()
+{
+	systick_event();
+	switch_even();
+	motor_control_even();
+	led_event();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 int main(void){
-	uint32_t i = 0;
-	uint32_t t = 0;
-	GPIO_InitTypeDef GPIO_Initialize;
-	
-	SystemCoreClockConfigure();
-	Usart_Init( 57600 );
-	PWM_Config();
-	
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB,ENABLE);
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC,ENABLE);
-	
-	GPIO_Initialize.GPIO_Mode = GPIO_Mode_OUT;
-	GPIO_Initialize.GPIO_OType = GPIO_OType_PP;
-	GPIO_Initialize.GPIO_Pin = GPIO_Pin_7;
-	GPIO_Initialize.GPIO_PuPd = GPIO_PuPd_NOPULL;
-	GPIO_Initialize.GPIO_Speed = GPIO_Speed_Level_3;
-	GPIO_Init(GPIOC,&GPIO_Initialize);
-	
 
-	GPIO_Initialize.GPIO_Pin = GPIO_Pin_6;
-	GPIO_Init(GPIOC,&GPIO_Initialize);
-	GPIO_SetBits(GPIOC,GPIO_Pin_6);
-
-	Motor1_Back();
-	Motor2_Back();
-	
-	current_to_adc(1);
+	app_init();
 	
 	while(1){
-		for(i=0;i<500000;i++);
-		GPIO_SetBits(GPIOC,GPIO_Pin_7);
-		for(i=0;i<500000;i++);
-		GPIO_ResetBits(GPIOC,GPIO_Pin_7);
-		USART2_SendBuf("123",3);
+		app_event();
 	}
 }

@@ -417,6 +417,26 @@
               <FileType>1</FileType>
               <FilePath>.\User\main.c</FilePath>
             </File>
+            <File>
+              <FileName>systick.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\User\systick.c</FilePath>
+            </File>
+            <File>
+              <FileName>systick.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\User\systick.h</FilePath>
+            </File>
+            <File>
+              <FileName>switcher.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\User\switcher.c</FilePath>
+            </File>
+            <File>
+              <FileName>switcher.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\User\switcher.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
