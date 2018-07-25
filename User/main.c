@@ -4,6 +4,8 @@
 #include "switcher.h"
 
 
+
+
 void SystemCoreClockConfigure(void) {
 
   RCC->CR |= ((uint32_t)RCC_CR_HSION);                     // Enable HSI
@@ -46,7 +48,113 @@ void SystemCoreClockConfigure(void) {
 
 
 
+//stm32F072:  2K/paage
+//#define FLASH_PAGE_SIZE    ((uint16_t)0x800)
+//stm32F030: 1K/page
+#define FLASH_PAGE_SIZE    ((uint16_t)0x400)
+
+#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
+#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
+
+// the size of struct config should be n*4Byte
+struct config {
+	int config_avaliable;
+	float forward_max_mA;
+	float forward_min_mA;
+	float back_max_mA;
+};
+volatile struct config g_config;
+
+
+void config_read()
+{
+	volatile int * p;
+	__IO int* addr;
+	int i, int_count;
+	
+	addr = (__IO int*) CONFIG_ADDRESS;
+	int_count = sizeof( struct config )/sizeof( int );	
+	p = (volatile int*)&g_config;
+	for( i=0; i< int_count  ; i++ ){
+		*(p+i) = *(__IO int*) addr;
+		addr++;
+	}
+	
+}
+
+int config_save()
+{
+	int timeout, i, res;
+	volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
+	volatile int * data = (volatile int *) &g_config;
+	int addr = CONFIG_ADDRESS;
+	int int_count = sizeof( struct config )/sizeof( int );
+	
+	g_config.config_avaliable = 1;
+		
+	FLASHStatus = FLASH_COMPLETE;
+	FLASH_Unlock();
+	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPERR);
+	
+	res = 0;
+	timeout = 10;
+	while( timeout-- > 0)
+	{
+		FLASHStatus = FLASH_ErasePage(addr);
+		if( FLASHStatus == FLASH_COMPLETE ){
+			res = 1;
+			break;
+		}
+	}
+	
+	if( res == 1 )
+	{
+		for ( i = 0; i< int_count ; i++ )
+		{
+			res = 0;
+			timeout = 10;
+			while( timeout-- > 0)
+			{
+				FLASHStatus = FLASH_ProgramWord( addr+4*i, *(data+i) ) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
+				if( FLASHStatus == FLASH_COMPLETE ){
+					res = 1;
+					break;
+				}
+			}
+			if( res == 0 ) break;
+		}
+	}else{
+		printf(" earse false \n");
+	}
+
+	FLASH_Lock();
+	
+	return res;
+}
+
+
+void config_init()
+{
+	//if no this setting , flash will very slow
+	//FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
+	g_config.config_avaliable = 0;
+	config_read();
+	if( g_config.config_avaliable != 1 ){
+		// never init
+		printf("reset config\n");
+		g_config.config_avaliable = 1;
+		g_config.forward_max_mA = 320;
+		g_config.forward_min_mA = 120;
+		g_config.back_max_mA = 120;
+		config_save();
+	}
+}
+
+
 //usart 
+
+volatile int debug_en = 0;
+#define _LOG(X...) if( debug_en ) printf(X);
 
 void Usart_Init(uint32_t BaudRate)
 {
@@ -298,6 +406,27 @@ void Motor2_Stop()
 
 
 
+#define ADC_MAX_VAL 0x0FFF
+#define ADC_REFERENCE_VOLTAGE 3.3f
+#define BATTRY_VOLTAGE_SCALE_MV 2000.0f
+#define MOTOR_CURENT_GAIN 10.1f
+#define MOTOR_CURRENT_RESISTOR_VALUE 0.2f
+
+#define MOTOR_MAX_CURRENT_MILLIAMPS_FWD 450
+#define MOTOR_MAX_CURRENT_MILLIAMPS_REV 200
+
+//0.39894
+static const float motorMilliampsPerCount = ((1.0f / ((float) ADC_MAX_VAL)) * ADC_REFERENCE_VOLTAGE / MOTOR_CURENT_GAIN / MOTOR_CURRENT_RESISTOR_VALUE) * 1000.0f;
+
+__inline  uint16_t current_to_adc(float c)
+{
+    return (uint16_t)(c / motorMilliampsPerCount);
+}
+
+
+
+
+
 #define ADC_SAMPLE_COUNT 32  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
 #define ADC_SAMPLE_CHANNEL_COUNT 1
 volatile static unsigned short escADCConvert[ADC_SAMPLE_COUNT]={0};
@@ -400,7 +529,7 @@ unsigned short Cali_Adc_Value()
 	sensor = sensor/ADC_SAMPLE_COUNT;
 	//printf("adc=%d\n",sensor);
 	//printf("c=%d\n",(int)((float)sensor*0.39894));
-	//printf("adc=%d,v=%d\n",sensor,(int)(sensor*3300/4095/10.1));
+	_LOG("adc=%d,c=%d\n",sensor, (int)((float)sensor*motorMilliampsPerCount) );
 	return sensor;
 }
 
@@ -412,23 +541,6 @@ __inline unsigned short get_adc_loop()
 	return Cali_Adc_Value();
 }
 
-#define ADC_MAX_VAL 0x0FFF
-#define ADC_REFERENCE_VOLTAGE 3.3f
-#define BATTRY_VOLTAGE_SCALE_MV 2000.0f
-#define MOTOR_CURENT_GAIN 10.1f
-#define MOTOR_CURRENT_RESISTOR_VALUE 0.2f
-
-#define MOTOR_MAX_CURRENT_MILLIAMPS_FWD 450
-#define MOTOR_MAX_CURRENT_MILLIAMPS_REV 200
-
-//0.39894
-static const float motorMilliampsPerCount = ((1.0f / ((float) ADC_MAX_VAL)) * ADC_REFERENCE_VOLTAGE / MOTOR_CURENT_GAIN / MOTOR_CURRENT_RESISTOR_VALUE) * 1000.0f;
-unsigned short  ADC_MAX_FWD , ADC_MAX_REV;
-
-__inline  uint16_t current_to_adc(float c)
-{
-    return (uint16_t)(c / motorMilliampsPerCount);
-}
 
 
 
@@ -444,7 +556,6 @@ __inline  uint16_t current_to_adc(float c)
 #define is_motor_started (motor_status>0)
 #define is_motor_forward (motor_status ==1)
 #define is_motor_back  (motor_status == 2)
-#define CHASSIS_SHOOT_ADC 310
 
 volatile char motor_status;
 volatile systick_time_t motor_timer;
@@ -452,8 +563,11 @@ volatile unsigned int motor_ms;
 
 volatile unsigned int adc_record ;
 volatile int adc_record_count;
-	
 
+volatile unsigned short  ADC_MAX_FWD ;
+volatile unsigned short ADC_MAX_REV;
+volatile unsigned short CHASSIS_SHOOTED_ADC;
+		
 void motor_control_start()
 {
 	motor_status = 1;
@@ -477,6 +591,17 @@ void motor_control_stop()
 	Motor1_Stop();
 	
 	led_flash = 0;	
+}
+
+
+void motor_control_update_limit()
+{
+	ADC_MAX_FWD = current_to_adc(g_config.forward_max_mA);
+	ADC_MAX_REV =  current_to_adc(g_config.back_max_mA); 
+	CHASSIS_SHOOTED_ADC = current_to_adc(g_config.forward_min_mA); 
+	
+	printf("FWD_ADC:%d, shooted:%d, BACK_ADC:%d\n",ADC_MAX_FWD,CHASSIS_SHOOTED_ADC, ADC_MAX_REV );
+	
 }
 
 void motor_control_init()
@@ -515,10 +640,7 @@ void motor_control_init()
 	
 	ADC_Configuration ();
 	
-	ADC_MAX_FWD = current_to_adc(MOTOR_MAX_CURRENT_MILLIAMPS_FWD);
-	ADC_MAX_REV = current_to_adc(MOTOR_MAX_CURRENT_MILLIAMPS_REV); 
-	
-	printf("FWD_ADC:%d, BACK_ADC:%d\n",ADC_MAX_FWD,ADC_MAX_REV);
+	motor_control_update_limit();
 	
 	motor_control_stop();
 	
@@ -542,27 +664,32 @@ void motor_control_even()
 		if(  ms >=  (motor_ms+500)  )
 		{
 			adc = get_adc_loop();
-			if( adc > CHASSIS_SHOOT_ADC ) 
+			
+			// check whether have the shooter stage 
+			if( adc >= CHASSIS_SHOOTED_ADC ) 
 			{
-				adc_record += adc;
+				//adc_record += adc;
 				adc_record_count ++;
 			}
+			//check the max current
 			if( adc >= ADC_MAX_FWD )
 			{
 				motor_control_stop();
 				LED_FAILUE_ON();
 				LED_PASS_OFF();
+				_LOG("Forwared: Current too high %f\n" , adc*motorMilliampsPerCount);
 			}else{				
 				if( ms >= ( motor_ms + 1500 ) )
 				{
 					if( adc_record_count > 1 ){
-						//have shoot 
+						//have shooted
 						next = 1;
 					}else{
 						// without shoot
 						motor_control_stop();
 						LED_FAILUE_ON();
 						LED_PASS_OFF();
+						_LOG("Forward: no shooted \n");
 					}
 				}
 			}
@@ -572,7 +699,7 @@ void motor_control_even()
 		//result
 		if( next == 1)
 		{
-			//printf("fw end\n");
+			_LOG("fw end\n");
 			Motor2_Stop();
 			Motor1_Stop();
 			motor_status = 2;
@@ -580,7 +707,7 @@ void motor_control_even()
 			Motor2_Back();
 			//Motor1_Back();
 			motor_ms = systick_get_ms();
-			//printf("back start\n");
+			_LOG("back start\n");
 		}
 		
 	}
@@ -591,8 +718,10 @@ void motor_control_even()
 		if( ms > (motor_ms+150) )
 		{
 			adc = get_adc_loop();
-			if( adc >= ADC_MAX_REV )
+			if( adc >= ADC_MAX_REV ){
 				next = 1;
+				_LOG("Back: Current too high %f\n" , adc*motorMilliampsPerCount);
+			}
 
 			if( ms >= ( motor_ms + 4000 ) )
 				next = 1;
@@ -603,6 +732,7 @@ void motor_control_even()
 		{
 			//printf("back end\n");
 			motor_control_stop();
+			systick_delay_ms(200); //wait 0.2s
 			if( is_endStoper_Press ) // back in a right position
 			{
 				LED_PASS_ON();
@@ -673,6 +803,88 @@ __inline void switch_even()
 }
 
 
+/*
+'d', toggle debug (on/off)
+'1', mAL, mAH   // forward max
+'2', mAL, mAH 	// forward min
+'3', mAL, mAH		// back max
+*/
+
+volatile unsigned char buffer[16];
+volatile int bindex;
+
+void cmd_even()
+{
+	unsigned char i, len;
+	
+
+	while( bindex < sizeof(buffer) && USART_GetFlagStatus(USART2,USART_FLAG_RXNE) ) 
+	{
+		buffer[bindex] = USART_ReceiveData(USART2);
+		bindex ++;
+	}
+
+	
+	len = bindex;
+	if( len == 0 ) return;
+	
+	switch( buffer[0] )
+	{
+		case 'd':
+			debug_en = debug_en==1? 0:1;
+			bindex = 0;
+			break;
+		
+		case 'g':
+			printf("forward max mA = %f\n",g_config.forward_max_mA );
+			printf("forward min mA = %f\n",g_config.forward_min_mA );
+			printf("back max mA = %f\n",g_config.back_max_mA );
+			bindex = 0;
+			break;
+				
+		case '1':
+			if( len == 3 )
+			{
+				g_config.forward_max_mA = buffer[1] | buffer[2]<<8 ;
+				config_save();
+				printf("update forward max mA = %f\n",g_config.forward_max_mA );
+				motor_control_update_limit();
+				bindex = 0;
+			}
+			break;
+			
+		case '2':
+			if( len == 3 )
+			{
+				g_config.forward_min_mA = buffer[1] | buffer[2]<<8 ;
+				config_save();
+				printf("update forward min mA = %f\n",g_config.forward_min_mA );
+				motor_control_update_limit();
+				bindex = 0;
+			}
+			break;	
+			
+		case '3':
+			if( len == 3 )
+			{
+				g_config.back_max_mA = buffer[1] | buffer[2]<<8 ;
+				config_save();
+				printf("update back max mA = %f\n",g_config.back_max_mA );
+				motor_control_update_limit();
+				bindex = 0;
+			}
+			break;
+			
+			default:
+				bindex = 0;
+				break;
+	}
+	
+}
+
+
+
+
 
 
 void app_init()
@@ -680,6 +892,7 @@ void app_init()
 	SystemCoreClockConfigure();
 	systick_init();
 	Usart_Init( 57600 );
+	config_init();
 	led_init();
 	motor_control_init();
 	switch_init();
@@ -692,6 +905,8 @@ __inline void app_event()
 	switch_even();
 	motor_control_even();
 	led_event();
+	
+	cmd_even();
 }
 
 
