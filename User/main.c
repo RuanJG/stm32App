@@ -2,7 +2,8 @@
 #include "stdio.h"
 #include "systick.h"
 #include "switcher.h"
-
+#include "uart.h"
+#include "protocol.h"
 
 
 
@@ -156,14 +157,19 @@ void config_init()
 volatile int debug_en = 0;
 #define _LOG(X...) if( debug_en ) printf(X);
 
+//Uart_t Uart1;
+Uart_t Uart2;
+//Uart_t Uart3;
+
+
+
 void Usart_Init(uint32_t BaudRate)
 {
     USART_InitTypeDef USART_InitStruct;
     GPIO_InitTypeDef GPIO_InitStruct;
 
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);
-    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA,ENABLE);
 
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA,ENABLE);
     /*
     PA9-TX-推挽复用
     PA10-RX-浮空输入/上拉输入
@@ -184,45 +190,17 @@ void Usart_Init(uint32_t BaudRate)
     GPIO_InitStruct.GPIO_PuPd=GPIO_PuPd_UP;
     GPIO_Init(GPIOA,&GPIO_InitStruct);
 
-    /*USART基本配置*/
-    USART_InitStruct.USART_BaudRate=BaudRate;
-    USART_InitStruct.USART_HardwareFlowControl=USART_HardwareFlowControl_None;
-    USART_InitStruct.USART_Mode=USART_Mode_Tx|USART_Mode_Rx;
-    USART_InitStruct.USART_Parity=USART_Parity_No;
-    USART_InitStruct.USART_StopBits=USART_StopBits_1;
-    USART_InitStruct.USART_WordLength=USART_WordLength_8b;
-    USART_Init(USART2,&USART_InitStruct);
-
-    /*使能接收中断*/
-    //NVIC_Config(USART2_IRQn);
-    //USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
-
-    USART_Cmd(USART2,ENABLE);
-}
 
 
-uint8_t USART2_ReciverBuf(void)
-{
-     /*判断接收缓冲区是否为非空*/
-    while(!USART_GetFlagStatus(USART2,USART_FLAG_RXNE));
-    return USART_ReceiveData(USART2);
+		Uart_Configuration (&Uart2, USART2, BaudRate, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+
 }
 
 int fputc(int ch, FILE *f)
 {
-    USART_SendData(USART2,(uint8_t)ch);
-    while (!USART_GetFlagStatus(USART2, USART_FLAG_TXE));
+    Uart_Put( &Uart2, (unsigned char *)&ch,1);
+    //while (!USART_GetFlagStatus(USART2, USART_FLAG_TXE));
     return (ch);
-}
-
-void USART2_SendBuf(uint8_t *pBuf, uint32_t u32Len)
-{
-    while(u32Len--)
-    {
-        /*判断发送缓冲区是否为空*/
-        while(!USART_GetFlagStatus(USART2,USART_FLAG_TXE));
-        USART_SendData(USART2,*pBuf++);
-    }
 }
 
 
@@ -810,36 +788,25 @@ __inline void switch_even()
 '3', mAL, mAH		// back max
 */
 
-volatile unsigned char buffer[16];
-volatile int bindex;
+protocol_t cmd_coder;
 
-void cmd_even()
+
+
+void cmd_handleMsg( unsigned char * buffer, int len)
 {
-	unsigned char i, len;
-	
 
-	while( bindex < sizeof(buffer) && USART_GetFlagStatus(USART2,USART_FLAG_RXNE) ) 
-	{
-		buffer[bindex] = USART_ReceiveData(USART2);
-		bindex ++;
-	}
-
-	
-	len = bindex;
-	if( len == 0 ) return;
-	
+	//printf("get a message\n");
 	switch( buffer[0] )
 	{
 		case 'd':
 			debug_en = debug_en==1? 0:1;
-			bindex = 0;
+			printf("debug %s\n", debug_en==1?"on":"off");
 			break;
 		
 		case 'g':
 			printf("forward max mA = %f\n",g_config.forward_max_mA );
 			printf("forward min mA = %f\n",g_config.forward_min_mA );
 			printf("back max mA = %f\n",g_config.back_max_mA );
-			bindex = 0;
 			break;
 				
 		case '1':
@@ -849,7 +816,6 @@ void cmd_even()
 				config_save();
 				printf("update forward max mA = %f\n",g_config.forward_max_mA );
 				motor_control_update_limit();
-				bindex = 0;
 			}
 			break;
 			
@@ -860,7 +826,6 @@ void cmd_even()
 				config_save();
 				printf("update forward min mA = %f\n",g_config.forward_min_mA );
 				motor_control_update_limit();
-				bindex = 0;
 			}
 			break;	
 			
@@ -871,16 +836,31 @@ void cmd_even()
 				config_save();
 				printf("update back max mA = %f\n",g_config.back_max_mA );
 				motor_control_update_limit();
-				bindex = 0;
 			}
 			break;
 			
 			default:
-				bindex = 0;
 				break;
 	}
 	
 }
+
+void cmd_even()
+{
+	unsigned char buffer[8];
+	unsigned char i, len;
+	
+
+	len = Uart_Get( &Uart2, buffer, 8 );
+	for( i=0 ; i<len; i++ ){
+		//printf("%d,",buffer[i]);
+		if( 1 == protocol_parse( &cmd_coder, buffer[i] ) ){
+			cmd_handleMsg( cmd_coder.data, cmd_coder.len );
+		}
+	}
+	
+}
+
 
 
 
@@ -896,6 +876,8 @@ void app_init()
 	led_init();
 	motor_control_init();
 	switch_init();
+	
+	protocol_init( &cmd_coder );
 }
 
 
