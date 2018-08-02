@@ -6,6 +6,9 @@
 #include "protocol.h"
 
 
+#define TEST_MACHINE 0
+#define TEST_UNIT 1
+
 
 void SystemCoreClockConfigure(void) {
 
@@ -63,6 +66,7 @@ struct config {
 	float forward_max_mA;
 	float forward_min_mA;
 	float back_max_mA;
+	float forward_mid_mA;
 };
 volatile struct config g_config;
 
@@ -90,6 +94,7 @@ int config_save()
 	volatile int * data = (volatile int *) &g_config;
 	int addr = CONFIG_ADDRESS;
 	int int_count = sizeof( struct config )/sizeof( int );
+
 	
 	g_config.config_avaliable = 1;
 		
@@ -144,9 +149,10 @@ void config_init()
 		// never init
 		printf("reset config\n");
 		g_config.config_avaliable = 1;
-		g_config.forward_max_mA = 320;
+		g_config.forward_max_mA = 450;
 		g_config.forward_min_mA = 120;
-		g_config.back_max_mA = 120;
+		g_config.back_max_mA = 200;
+		g_config.forward_mid_mA = 320;
 		config_save();
 	}
 }
@@ -507,7 +513,7 @@ unsigned short Cali_Adc_Value()
 	sensor = sensor/ADC_SAMPLE_COUNT;
 	//printf("adc=%d\n",sensor);
 	//printf("c=%d\n",(int)((float)sensor*0.39894));
-	_LOG("adc=%d,c=%d\n",sensor, (int)((float)sensor*motorMilliampsPerCount) );
+	//_LOG("adc=%d,c=%d\n",sensor, (int)((float)sensor*motorMilliampsPerCount) );
 	return sensor;
 }
 
@@ -538,25 +544,32 @@ __inline unsigned short get_adc_loop()
 volatile char motor_status;
 volatile systick_time_t motor_timer;
 volatile unsigned int motor_ms;
+volatile unsigned int last_ms=0;
 
-volatile unsigned int adc_record ;
+volatile unsigned short adc_max_record ;
 volatile int adc_record_count;
 
 volatile unsigned short  ADC_MAX_FWD ;
 volatile unsigned short ADC_MAX_REV;
 volatile unsigned short CHASSIS_SHOOTED_ADC;
+volatile unsigned short CHASSIS_RESISTAN_ADC;
 		
 void motor_control_start()
 {
 	motor_status = 1;
 	EN_POWER_ADC();
 	systick_delay_ms(5);
-	Motor2_Forward();
-	//Motor1_Forward();
+	
+	if( TEST_MACHINE )
+		Motor2_Forward();
+	if( TEST_UNIT )
+		Motor1_Forward();
+	
 	motor_ms = systick_get_ms();
+	last_ms = motor_ms;
 	
 	led_flash = 1;
-	adc_record = 0;
+	adc_max_record = 0;
 	adc_record_count = 0;
 }
 
@@ -577,6 +590,7 @@ void motor_control_update_limit()
 	ADC_MAX_FWD = current_to_adc(g_config.forward_max_mA);
 	ADC_MAX_REV =  current_to_adc(g_config.back_max_mA); 
 	CHASSIS_SHOOTED_ADC = current_to_adc(g_config.forward_min_mA); 
+	CHASSIS_RESISTAN_ADC = current_to_adc(g_config.forward_mid_mA); 
 	
 	printf("FWD_ADC:%d, shooted:%d, BACK_ADC:%d\n",ADC_MAX_FWD,CHASSIS_SHOOTED_ADC, ADC_MAX_REV );
 	
@@ -624,6 +638,8 @@ void motor_control_init()
 	
 }
 
+
+
 void motor_control_even()
 {
 	unsigned short adc;
@@ -634,45 +650,54 @@ void motor_control_even()
 	
 	
 	next = 0;
+	ms = systick_get_ms();
+	adc = get_adc_loop();
+	
+	if( (ms-last_ms) >= 1 ){
+		_LOG("%d:%d\n",ms-motor_ms,(int)(adc*motorMilliampsPerCount) );
+		last_ms = ms;
+	}
+	
+	
 	if( is_motor_forward )
 	{
-		ms = systick_get_ms();
-
-		//check
-		if(  ms >=  (motor_ms+500)  )
-		{
-			adc = get_adc_loop();
-			
-			// check whether have the shooter stage 
-			if( adc >= CHASSIS_SHOOTED_ADC ) 
+		//ms = systick_get_ms();
+		//adc = get_adc_loop();
+			// check whether have the shooter stage ( 200-500ms ) 
+			if( (ms >= (motor_ms+200)) && (ms<=(motor_ms+600)) && adc >= CHASSIS_SHOOTED_ADC ) 
 			{
 				//adc_record += adc;
 				adc_record_count ++;
 			}
+			
 			//check the max current
-			if( adc >= ADC_MAX_FWD )
+			if(  ms >=  (motor_ms+500)  )
 			{
-				motor_control_stop();
-				LED_FAILUE_ON();
-				LED_PASS_OFF();
-				_LOG("Forwared: Current too high %f\n" , adc*motorMilliampsPerCount);
-			}else{				
-				if( ms >= ( motor_ms + 1500 ) )
-				{
-					if( adc_record_count > 1 ){
-						//have shooted
-						next = 1;
-					}else{
-						// without shoot
-						motor_control_stop();
-						LED_FAILUE_ON();
-						LED_PASS_OFF();
-						_LOG("Forward: no shooted \n");
-					}
+				if( adc > adc_max_record ) {
+					//_LOG("max adc=%u\n",adc);
+					adc_max_record = adc;
 				}
+				
+				if( adc >= ADC_MAX_FWD  )
+				{
+					next = 1;
+				}
+				
+				/*
+				if( ms<(motor_ms+1100) && adc>=CHASSIS_RESISTAN_ADC  )
+				{
+					motor_control_stop();
+					LED_FAILUE_ON();
+					LED_PASS_OFF();
+					_LOG("Forwared: Current too high %f\n" , adc*motorMilliampsPerCount);
+				}
+				*/
 			}
 			
-		}
+			if( ms >= ( motor_ms + 1500 ) )
+			{
+				next = 1;
+			}
 		
 		//result
 		if( next == 1)
@@ -681,9 +706,11 @@ void motor_control_even()
 			Motor2_Stop();
 			Motor1_Stop();
 			motor_status = 2;
-			systick_delay_ms(500); //wait 0.5s
-			Motor2_Back();
-			//Motor1_Back();
+			systick_delay_ms(1000); //wait 0.5s
+			if( TEST_MACHINE )
+				Motor2_Back();
+			if( TEST_UNIT )
+				Motor1_Back();
 			motor_ms = systick_get_ms();
 			_LOG("back start\n");
 		}
@@ -691,11 +718,11 @@ void motor_control_even()
 	}
 	else if( is_motor_back )
 	{
-		ms = systick_get_ms();
+		//ms = systick_get_ms();
 		
 		if( ms > (motor_ms+150) )
 		{
-			adc = get_adc_loop();
+			//adc = get_adc_loop();
 			if( adc >= ADC_MAX_REV ){
 				next = 1;
 				_LOG("Back: Current too high %f\n" , adc*motorMilliampsPerCount);
@@ -711,13 +738,18 @@ void motor_control_even()
 			//printf("back end\n");
 			motor_control_stop();
 			systick_delay_ms(200); //wait 0.2s
-			if( is_endStoper_Press ) // back in a right position
+			if( (TEST_UNIT || is_endStoper_Press) && adc_record_count>5 && adc_max_record < ADC_MAX_FWD) // back in a right position
 			{
+				printf(" press=%d,adc_record_count=%d,max_adc=%d\n",is_endStoper_Press,adc_record_count,adc_max_record);
 				LED_PASS_ON();
 				LED_FAILUE_OFF();
 			}else{
 				LED_FAILUE_ON();
 				LED_PASS_OFF();
+				printf(" press=%d,adc_record_count=%d,max_adc=%u\n",is_endStoper_Press,adc_record_count,adc_max_record);
+				if( !(TEST_UNIT || is_endStoper_Press) ) printf("not back to the end\n");
+				if( adc_record_count<=5 ) printf(" not shoot detected \n");
+				if( adc_max_record >= ADC_MAX_FWD )printf(" resistance limit, max record =%u \n" ,adc_max_record );
 			}
 
 		}
@@ -808,12 +840,17 @@ void cmd_handleMsg( unsigned char * buffer, int len)
 			printf("forward min mA = %f\n",g_config.forward_min_mA );
 			printf("back max mA = %f\n",g_config.back_max_mA );
 			break;
+	
+		case 's':
+			printf("motor start by software\n");
+			motor_control_start();
+			break;
 				
 		case '1':
 			if( len == 3 )
 			{
 				g_config.forward_max_mA = buffer[1] | buffer[2]<<8 ;
-				config_save();
+				//config_save();
 				printf("update forward max mA = %f\n",g_config.forward_max_mA );
 				motor_control_update_limit();
 			}
@@ -823,7 +860,7 @@ void cmd_handleMsg( unsigned char * buffer, int len)
 			if( len == 3 )
 			{
 				g_config.forward_min_mA = buffer[1] | buffer[2]<<8 ;
-				config_save();
+				//config_save();
 				printf("update forward min mA = %f\n",g_config.forward_min_mA );
 				motor_control_update_limit();
 			}
@@ -833,7 +870,7 @@ void cmd_handleMsg( unsigned char * buffer, int len)
 			if( len == 3 )
 			{
 				g_config.back_max_mA = buffer[1] | buffer[2]<<8 ;
-				config_save();
+				//config_save();
 				printf("update back max mA = %f\n",g_config.back_max_mA );
 				motor_control_update_limit();
 			}
@@ -864,28 +901,55 @@ void cmd_even()
 
 
 
-
-
-
 void app_init()
 {
 	SystemCoreClockConfigure();
 	systick_init();
-	Usart_Init( 57600 );
-	config_init();
-	led_init();
-	motor_control_init();
+	Usart_Init( 115200 );
+	
+	
+
+#if TEST_MACHINE
+	//config_init();
 	switch_init();
+#endif
+	
+	motor_control_init();
+	
+	led_init();
 	
 	protocol_init( &cmd_coder );
+	
+#if TEST_UNIT 
+	g_config.config_avaliable = 1;
+	g_config.forward_max_mA = 450;
+	g_config.forward_min_mA = 110;
+	g_config.back_max_mA = 200;
+	//g_config.forward_mid_mA = 320;
+	motor_control_update_limit();
+#endif
+
+#if TEST_MACHINE
+	g_config.config_avaliable = 1;
+	g_config.forward_max_mA = 450;   //ADC_MAX_FWD
+	g_config.forward_min_mA = 110;  //CHASSIS_SHOOTED_ADC 
+	g_config.back_max_mA = 120;		//ADC_MAX_REV
+	//g_config.forward_mid_mA = 320;   // CHASSIS_RESISTAN_ADC 
+	motor_control_update_limit();
+#endif
 }
 
 
 __inline void app_event()
 {
 	systick_event();
+	
+#if TEST_MACHINE
 	switch_even();
+#endif
+	
 	motor_control_even();
+
 	led_event();
 	
 	cmd_even();
