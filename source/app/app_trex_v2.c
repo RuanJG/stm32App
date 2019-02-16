@@ -98,7 +98,7 @@ void Uart_init()
 
 #define ADC_SAMPLE_COUNT 34  // 2^5 = 32 , 32+2( min max )= 34  ; (sum-min-max)>>5 == (sum-min-max)/32
 #define ADC_SAMPLE_CHANNEL_COUNT 1
-static unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
+volatile unsigned short escADCConvert[ADC_SAMPLE_COUNT][ADC_SAMPLE_CHANNEL_COUNT];
 volatile int adc_updated;
 
 void ADC_Configuration ()
@@ -374,9 +374,9 @@ void led_pin_config()
 
 
 
-static int sw_value;
-static int sw_counter;
-static int sw_on_tag;
+volatile int sw_value;
+volatile int sw_counter;
+volatile int sw_on_tag;
 #define SW_MAX_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
 systick_time_t sw_timer;
 
@@ -578,11 +578,14 @@ volatile unsigned char userStation_mode;
 
 
 #define ENABLE_REPORT_RESEND 0
-unsigned char report_buffer[11];
+#define REPORT_MAX_DATA_COUNT 100
+volatile unsigned char report_buffer[REPORT_MAX_DATA_COUNT][15];
+volatile unsigned int report_buffer_index;
+volatile unsigned int report_buffer_sent_index;
 volatile char report_listen_tag;
 systick_time_t report_listen_timer;
 
-
+volatile unsigned int report_ms;
 
 
 
@@ -628,38 +631,95 @@ void userStation_log( char * str ){
 void userStation_report_resend_start()
 {
 	report_listen_tag = 1;
-	systick_init_timer( &report_listen_timer , 200);
+	systick_init_timer( &report_listen_timer , 500);
 }
 
 
+void userStation_reset_report()
+{
+	report_ms = systick_get_ms();
+	report_buffer_index = 0;
+	report_buffer_sent_index = 0;
+	report_listen_tag = 0;
+}
 
-void userStation_report(int db, float current, int work_counter, int error)
+unsigned int userStation_get_report_ms()
+{
+	unsigned int ms;
+	
+	ms = systick_get_ms() - report_ms ;
+	return ms;
+}
+
+void userStation_report(int db, float current, int switch_state)
 {
 	//tag[0]+db[0]db[1]db[2]db[3]+current[....]+work_current[0]+error[0]  ; work_counter is the count of the records
 	
+	unsigned int ms;
 	
-	
-	report_buffer[0]= USER_DATA_TAG;
-	memcpy( &report_buffer[1], (unsigned char*) &db, 4 ) ;
-	memcpy( &report_buffer[5], (unsigned char*) &current , 4 ); 
-	report_buffer[9]= work_counter;
-	report_buffer[10] = error;
-	
-
-	if( 0 == userStation_send( report_buffer, sizeof(report_buffer) ) ){
-		_LOG("userStation_report: send false\n");
-		userStation_log("userStation_report: send false\n");
+	if( report_buffer_index >= REPORT_MAX_DATA_COUNT ){ 
+		if( switch_state == 0 )
+		{
+			report_buffer_index = REPORT_MAX_DATA_COUNT-1;
+			if( report_buffer_sent_index >= report_buffer_index )
+				report_buffer_sent_index = report_buffer_index;
+		}else{
+			return ;
+		}
 	}
 	
-	if( error != 0 || work_counter != 0 ){
-		userStation_report_resend_start();
-	}else{
-		report_listen_tag = 0;
-	}
+	ms = userStation_get_report_ms();
 	
-	_LOG("report: db=%d, current=%f , count=%d, error=%d\n", db, current, work_counter ,error);
+	report_buffer[report_buffer_index][0]= USER_DATA_TAG;
+	memcpy( &report_buffer[report_buffer_index][1], (unsigned char*) &ms, 4 ) ;
+	memcpy( &report_buffer[report_buffer_index][5], (unsigned char*) &db, 4 ) ;
+	memcpy( &report_buffer[report_buffer_index][9], (unsigned char*) &current , 4 ); 
+	report_buffer[report_buffer_index][13]= report_buffer_index;
+	report_buffer[report_buffer_index][14] = switch_state;
+	
+	//_LOG("report0: db=%d, current=%f , count=%d, sw=%d\n", db, current, report_buffer_index ,switch_state);
+	//_LOG("report1: db=%d, current=%f , count=%d, sw=%d\n", db, current, report_buffer[report_buffer_index][13] ,report_buffer[report_buffer_index][14]);
+	
+	
+	report_buffer_index++;
+	
+	
 }
 
+
+void userStation_report_send_event()
+{
+	
+	if( report_listen_tag == 1 )
+	{
+		//in resend loop
+		if( report_buffer_index > report_buffer_sent_index && 1 == systick_check_timer( &report_listen_timer ) )
+		{
+			_LOG("userStation_report_send_event: timeout->resend\n");
+			userStation_log("userStation_report_send_event: timeout->resend \n");
+			if( 0 == userStation_send( &report_buffer[report_buffer_sent_index][0], 15 ) ){
+				_LOG("userStation_report_send_event: send false\n");
+				userStation_log("userStation_report_send_event: send false\n");
+			}
+		}
+		
+	}else{
+		
+		if( report_buffer_index > report_buffer_sent_index ) 
+		{
+			
+			if( 0 == userStation_send( &report_buffer[report_buffer_sent_index][0], 15 ) ){
+				_LOG("userStation_report_send_event: send false\n");
+				userStation_log("userStation_report_send_event: send false\n");
+			}
+			userStation_report_resend_start();
+			//_LOG("send: index=%d, sw=%d\n", report_buffer[report_buffer_sent_index][13] ,report_buffer[report_buffer_sent_index][14]);
+			
+			report_buffer_sent_index++;
+		}
+		
+	}
+}
 
 
 
@@ -679,7 +739,6 @@ void userStation_send_config()
 		_LOG("send config false\n");
 		userStation_log("send config false\n");
 	}
-	
 }
 
 
@@ -754,20 +813,6 @@ void userStation_handleMsg( unsigned char *data, int len)
 	}
 }
 
-void userStation_report_resend_event()
-{
-	if( ENABLE_REPORT_RESEND == 0 ) return;
-	
-	if( report_listen_tag == 0 ) return;
-	
-	if( systick_check_timer( &report_listen_timer ) ){
-		if( 0 == userStation_send( report_buffer, sizeof(report_buffer) ) ){
-			_LOG("userStation_report_resend_event: send false\n");
-			userStation_log("userStation_report_resend_event: send false\n");
-		}
-	}
-	
-}
 
 void userStation_listen_even()
 {
@@ -782,7 +827,7 @@ void userStation_listen_even()
 		}
 	}
 	
-	userStation_report_resend_event();
+	userStation_report_send_event();
 }
 
 
@@ -854,7 +899,8 @@ int miniMeterCoder_prase( miniMeterCoder_t * coder, unsigned char data )
 		value[3] = coder->packet[3];
 		return 1;
 	}
-	return 0;
+	
+	return -1;
 }
 
 
@@ -909,21 +955,30 @@ void miniMeter_test_even()
 
 int service_getCurrent( float *A)
 {
-	unsigned char packget[8];
+	unsigned char data;
 	int i,count,res;
 	
 	res = 0;
 
-	count = Uart_Get( METER_UART , packget, sizeof( packget ) );
-	if( count == 0 ) return res;
-	
-	for( i=0; i< count ; i++){
-		if( 1 == miniMeterCoder_prase( &currentMeter , packget[i] ) ){
-			//sprintf(buffer,"%3.5fV",currentMeter.value);
-			//userStation_log(buffer);
-			//_LOG( "service_getCurrent: %.5fV" , currentMeter.value);
-			res = 1;
-			*A = currentMeter.value;
+	for( i=0,count=10; i< count ; i++)
+ {
+		if( 1 == Uart_Get( METER_UART , &data, 1 ) ) 
+		{
+			res = miniMeterCoder_prase( &currentMeter , data );
+			if( 1 == res )
+		  {
+				*A = currentMeter.value;
+				break;
+			}else if( -1 == res ){
+				//error
+				break;
+			}else{
+				//continue
+			}
+		}else{
+			// no uart data , break;
+			res = 0;
+			break;
 		}
 	}
 	return res;
@@ -1152,25 +1207,15 @@ int service_getCurrent( float *A)
 
 
 
-
-
-
-
-
-#define CALI_DATA_COUNT 50
 systick_time_t led_timer;
-systick_time_t collect_1s_timer;
+systick_time_t collect_timer;
 systick_time_t work_timer;
-static int work_counter;
-static int db_array[CALI_DATA_COUNT];
-static float current_array[CALI_DATA_COUNT];
-static unsigned char server_status; // 0: idel ,  1:cail
-static unsigned char server_collect_over;
+volatile unsigned char server_status; // 0: idel ,  1:cail
+
+
 void server_init()
 {
 	server_status =0;
-	work_counter = 0;
-	server_collect_over = 0;
 	#if USING_VICTORMETER 
 	victor8165_init();
 	#endif
@@ -1182,27 +1227,17 @@ void server_init()
 void server_start()
 {
 	unsigned char tag;
-	int delay_ms = 2500;
 	
-	//delay 10000ms for start read data
-	systick_init_timer( &work_timer, delay_ms);
-	//read current and db in 1s
-	systick_init_timer( &collect_1s_timer, 7000+delay_ms );
-	work_counter = 0;
-	server_collect_over = 0;
+	userStation_reset_report();
 	
+	//delay for start read data
+	systick_init_timer( &work_timer, 2500);
+
+
 	tag = USER_START_TAG;	
 	userStation_send( &tag , 1 );
 	userStation_send_config();
 	
-	//set led status
-	led_on(LED_STATUS_ID);
-	led_off( LED_ERROR_ID );
-	led_off(LED_PASS_ID);
-	led_off(LED_VOICE_ERROR_ID);
-	led_off(LED_CURRENT_ERROR_ID);
-	
-
 	
 	#if USING_VICTORMETER 
 	if( 0 == victor8165_check( "FUNC1?\n", "ADC\n") ){
@@ -1219,69 +1254,23 @@ void server_stop()
 	float current;
 	int db;
 	
-	if( work_counter > 0 ){
-		db = 0;
-		for( i=0; i< work_counter; i++){
-			current+=current_array[i];
-			db+=db_array[i];
-		}
-		db = db/work_counter;
-		current = current/work_counter;
-		
-	}
-	
-	
-	//TODO set led status
-	if( work_counter> 0 &&  current < g_config.current_max  && current > g_config.current_min && db < g_config.db_max){
-		led_on(LED_PASS_ID);
-		led_off(LED_VOICE_ERROR_ID);
-		led_off(LED_CURRENT_ERROR_ID);
-		led_off(LED_ERROR_ID);
-		userStation_report( db, current , work_counter, 0);
-	}else {
-		led_off(LED_PASS_ID);
-		if( work_counter > 0 ){
-			error = 0;
-			if( current >= g_config.current_max || current <= g_config.current_min ){
-				error |= USER_RES_CURRENT_FALSE_FLAG;
-				led_on(LED_CURRENT_ERROR_ID);
-			}
-			if( db >= g_config.db_max ){
-				error |= USER_RES_VOICE_FALSE_FLAG;
-				led_on(LED_VOICE_ERROR_ID);
-			}
-			userStation_report( db, current , work_counter, error);
-		}else{
-			led_on(LED_ERROR_ID);
-			userStation_report( 0, 0 , work_counter, USER_RES_ERROR_FLAG);
-		}
-	}
 	
 	#if USING_MINIMETER
 	miniMeter_stop();
 	#endif
 	
-	//update status
-	led_off(LED_STATUS_ID);
+	userStation_report( 0 , 0 ,0 );
+	
 }
 
 void server_runtime()
 {	
 	int res;
+	volatile int db;
+	float current;
 	
 	if( 0 == systick_check_timer( &work_timer ) )
 		return ;
-	
-	if( server_collect_over == 1 ) 
-		return ;
-	
-	//has collected enought records
-	if( work_counter >= CALI_DATA_COUNT || 1 == systick_check_timer( &collect_1s_timer ) ){
-		server_collect_over = 1;
-		server_stop();
-		server_status = 2;
-		return ;
-	}
 	
 	
 	#if USING_MINIMETER
@@ -1292,39 +1281,26 @@ void server_runtime()
 	#endif
 	
 
-	
-	
-	res = 1;
-	
+
 	//get current by uart
-	if( 0 == service_getCurrent( &current_array[ work_counter ] ) ){
-		//_LOG("server_runtime: get current false\n");
+	res = service_getCurrent( &current);
+	if( -1 == res ){
+		
 		userStation_log("read current false");
-		res = 0;
+		_LOG("read current false\n");
+		
+	}else if( 1 == res ){
+		
+		while( 1 ){
+			db  = get_voice_db();
+			if( db > 0 ) break;
+		}
+		userStation_report( db , current , sw_on_tag);
+		
 	}
 	
-	//get db
-	db_array[ work_counter ] = get_voice_db();
-	if( db_array[work_counter] < 0 ){
-		_LOG("error: read adc \n");
-		userStation_log("read adc false");
-		res = 0;
-	}
-	if( db_array[work_counter] < g_config.db_min ){
-		_LOG("error: read Noise too low , check connection \n");
-		userStation_log("error: Noise too low");
-		res = 0;
-	}
-
-
-	//update counter
-	if( res == 1 ){
-		userStation_report( db_array[ work_counter ], current_array[ work_counter ], 0, 0 ); 
-		work_counter++;
-	}
-	
-	//will run this func after 100ms
-	systick_init_timer( &work_timer, 20);
+	//will run this func after 10ms
+	systick_init_timer( &work_timer, 5);
 }
 
 void server_event()
@@ -1355,6 +1331,9 @@ void server_event()
 
 
 
+
+
+
 systick_time_t heart_led_timer;
 
 void heart_led_init()
@@ -1373,17 +1352,15 @@ void heart_led_init()
 void heart_led_even()
 {
 	static BitAction led = Bit_RESET;
-	static unsigned char tag = 0;
-	char buffer[16];
+	//static unsigned char tag = 0;
+	//char buffer[32];
 	
 	if( systick_check_timer( &heart_led_timer ) ){
 		GPIO_WriteBit( GPIOC, GPIO_Pin_13 , led);
 		led = led==Bit_RESET ? Bit_SET: Bit_RESET ;
-		//Uart_Put(PC_UART,"test",4);
-		//get_voice_db();
-		sprintf(buffer,"%d=sw:%d,ss:%d",tag++,sw_on_tag,server_status);
-		userStation_log(buffer);
-		tag %= 10;
+		//sprintf(buffer,"%d=sw:%d,ss:%d",tag++,sw_on_tag,server_status);
+		//userStation_log(buffer);
+		//tag %= 10;
 	}		
 }
 
@@ -1394,25 +1371,27 @@ systick_time_t user_station_loop_test_timer;
 
 void user_station_loop_test_init()
 {
-	systick_init_timer(&user_station_loop_test_timer, 50);
+	systick_init_timer(&user_station_loop_test_timer, 200);
 	
 }
 volatile int testcount=0;
+
 void user_station_loop_test_even()
 {
 	unsigned char tag;
-	
-	if( sw_on_tag==1 &&  systick_check_timer( &user_station_loop_test_timer ) ){
+
+	if( userStation_mode == USER_MODE_OFFLINE && systick_check_timer( &user_station_loop_test_timer ) ){
 		if( testcount >= 50 ){
-			userStation_report( 40, 0.444444 , 50, 0 ); 
+			userStation_report( 40, 0.444444 ,0 ); 
 			testcount = 0;
 		}else if( testcount == 0 ){
-			tag = USER_START_TAG;	
-			userStation_send( &tag , 1 );
+			//tag = USER_START_TAG;	
+			//userStation_send( &tag , 1 );
 			systick_delay_us(500000);
+			userStation_reset_report();
 			testcount ++;	
 		}else{
-			userStation_report( 40, 0.44445 , 0, 0 );
+			userStation_report( 40, 0.444444 ,1 );
 			testcount ++;			
 		}
 	}		
@@ -1467,7 +1446,7 @@ void app_init()
 	userStation_init();
 	server_init();
 	config_init();
-	//user_station_loop_test_init();
+	user_station_loop_test_init();
 	//systick_delay_us(1000000);
 	//miniMeter_start();
 
@@ -1480,13 +1459,19 @@ void app_init()
 void app_event()
 {
 	#if 1
-	if( userStation_mode != USER_MODE_SLAVER)
+	if( userStation_mode == USER_MODE_ONLINE ){
 		switch_det_event();
-	server_event();
+	}
+	
+	if( userStation_mode != USER_MODE_OFFLINE ){
+		server_event();
+	}
+	
 	userStation_listen_even();
 	heart_led_even();
+	
 	//miniMeter_test_even();
-	//user_station_loop_test_even();
+	user_station_loop_test_even();
 	//cmd_even();
 	#endif
 }
