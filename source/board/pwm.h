@@ -4,6 +4,7 @@
 int pwm_init( TIM_TypeDef* timer , int channel, unsigned short period, int freq_hz , int high1_low0, int enable_OCx_irq);
 int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm);
 int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm);
+unsigned short pwm_get(TIM_TypeDef* timer, int pchannel);
 /*
 *		this function just init the timer , you need init gpio and NVIC&irq_function
 *   timer : TIM1 TIM2 ...

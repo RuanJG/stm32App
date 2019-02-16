@@ -34,6 +34,7 @@
 #define BOARD_Trex_V2				1
 #define BOARD_MOTOR_COOPERATE 0
 #define BOARD_MULTIKILL_PCBA 0
+#define BOARD_UC_SHAVER_SAMPLE 0
 
 
 
@@ -80,6 +81,21 @@
 
 #endif
 
+
+
+
+#if BOARD_UC_SHAVER_SAMPLE
+
+//******** config iap 
+#define BOARD_HAS_IAP  1
+#define IAP_PORT_UART  1
+#define IAP_PORT_USB   1
+//******** config usb(can1)
+#define BOARD_USING_USB 1
+#define USB_COM_RX_BUF_SIZE       256			//  (1024 + 256)
+#define USB_COM_TX_BUF_SIZE       256			//  (1024 + 256)
+
+#endif
 
 
 

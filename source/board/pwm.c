@@ -197,6 +197,8 @@ int pwm_set( TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 }
 
 
+
+
 void pwm_set_freq( TIM_TypeDef* timer , unsigned short freq)
 {
 	unsigned short period;
@@ -216,6 +218,32 @@ int pwm_restart(  TIM_TypeDef* timer , int pchannel, unsigned short pwm)
 	//TIM_CtrlPWMOutputs( timer, ENABLE );
 	
 	return 0; 
+}
+
+
+unsigned short pwm_get(TIM_TypeDef* timer, int pchannel)
+{
+	int channel;
+	unsigned short pwm = 0;
+	channel = pchannel<0 ? -1*pchannel : pchannel;
+	
+	switch( channel ){
+	case 1:
+		pwm = TIM_GetCapture1( timer );
+		break;
+	case 2:
+		pwm = TIM_GetCapture2( timer );
+		break;
+	case 3:
+		pwm = TIM_GetCapture3( timer );
+		break;
+	case 4:
+		pwm = TIM_GetCapture4( timer );
+		break;
+	default:
+		return -1;
+	}
+	return pwm; 
 }
 
 

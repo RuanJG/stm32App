@@ -19,7 +19,7 @@ void switcher_init(struct switcher* sw, int maxcount, int default_level, int pre
 	
 	GPIO_InitStructure.GPIO_Pin = sw->GPIO_Pin;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode = default_level==0? GPIO_Mode_IPD : (default_level==1? GPIO_Mode_IPU:GPIO_Mode_IN_FLOATING) ;
+	GPIO_InitStructure.GPIO_Mode = default_level==0? GPIO_Mode_IPD :GPIO_Mode_IPU;//:GPIO_Mode_IN_FLOATING) ;
 	GPIO_Init(sw->GPIOx, &GPIO_InitStructure);
 	
 	
