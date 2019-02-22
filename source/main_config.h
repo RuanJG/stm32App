@@ -10,19 +10,19 @@
 
 
 //*****************************************************  choose board
-#define COMMON_BOARD_TYPE 0
+#define COMMON_BOARD_TYPE 1
 #define BOARD_TREX_V1_TYPE 0
-#define BOARD_TREX_V2_TYPE 1
+#define BOARD_TREX_V2_TYPE 0
 
 
 
 #if COMMON_BOARD_TYPE
 
 // IAP uart config
-#define IAP_PORT_UART 0
+#define IAP_PORT_UART 1
 #define UARTDEV		 	USART1
 #define UART_TX_GPIO 	GPIOA
-#define UART_TX_PIN 	GPIO_Pin_9
+#define UART_TX_PIN 	GPIO_Pin_9 
 #define UART_RX_GPIO 	GPIOA
 #define UART_RX_PIN 	GPIO_Pin_10
 #define UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
