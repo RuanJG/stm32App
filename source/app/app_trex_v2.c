@@ -11,7 +11,7 @@
 
 
 #define MACHINE_OLD 1  // old machine switch define is difference
-
+#define USE_SERVER2 1
 
 #define _LOG(X...) if( 1 ) printf(X);
 
@@ -236,9 +236,9 @@ int get_voice_db()
 	//db = (( adc*3300/4096 ) / 3162 ) *94; // 94: 1Pa=94db ; 3162: 3162mV/Pa 
 	//db = adc*3300*94*2/4096/3801; // adc*0.02395
 #if MACHINE_OLD
-	db = (adc*3344)/40960;
+	db = adc*0.080664; // vol/10 ==> (adc*3304/4096) / 10
 #else
-	db = adc*0.039848;
+	db = adc*0.039848;  //db = (( adc*3300/4096 ) / 3162 ) *94; // 94: 1Pa=94db ; 3162: 3162mV/Pa 
 #endif
 	//_LOG("db=%d",db);
 	
@@ -1220,6 +1220,7 @@ systick_time_t collect_timer;
 systick_time_t work_timer;
 volatile unsigned char server_status; // 0: idel ,  1:cail
 
+#define START_BY_DETECT_METER 1
 
 void server_init()
 {
@@ -1293,7 +1294,6 @@ void server_runtime()
 	//get current by uart
 	res = service_getCurrent( &current);
 	if( -1 == res ){
-		
 		userStation_log("read current false");
 		_LOG("read current false\n");
 		
@@ -1339,6 +1339,76 @@ void server_event()
 
 
 
+volatile int server2_start_tag;
+float server2_current;
+volatile int server2_db;
+
+void server2_init()
+{
+	server2_start_tag =0;
+	
+	#if USING_VICTORMETER 
+	victor8165_init();
+	#endif
+	#if USING_MINIMETER
+	miniMeter_init();
+	#endif
+	
+}
+
+void server2_event()
+{
+	int res;
+	unsigned char tag;
+	float current;
+	
+	#if USING_MINIMETER
+	if( 0 == miniMeter_start() ){
+		_LOG(" miniMeter start error \n");
+		userStation_log(" miniMeter start error \n");
+	}
+	#endif
+	
+	res = service_getCurrent( &current);
+	if( -1 == res ){
+		userStation_log("read current false");
+		_LOG("read current false\n");
+	}else if( 1 == res ){
+		//get a new data
+		if( current >= 0.1 )
+		{
+			//motor is running
+			server2_current = current;
+			while( 1 ){
+				server2_db  = get_voice_db();
+				if( server2_db > 0 ) break;
+			}
+			if( server2_start_tag == 0 ){
+				//start reporting
+				server2_start_tag = 1;
+				userStation_reset_report();
+				tag = USER_START_TAG;	
+				userStation_send( &tag , 1 );
+				userStation_send_config();
+				userStation_log("report start ...");
+				_LOG("read current false\n");
+			}
+			userStation_report( server2_db , server2_current , 1);
+
+		}else{
+			// waiting or stop
+			if( server2_start_tag == 1)
+			{
+				server2_start_tag = 0;
+				userStation_report( server2_db , server2_current , 0);
+				userStation_log("report end ...");
+			}
+		}
+		
+	}else{
+		// no data
+	}
+}
 
 
 
@@ -1426,7 +1496,6 @@ void cmd_even()
 
 
 
-
 void app_init()
 {
 	Uart_init();
@@ -1452,7 +1521,11 @@ void app_init()
 	heart_led_init();
 	switch_det_config();
 	userStation_init();
+#if USE_SERVER2
+	server2_init();
+#else
 	server_init();
+#endif
 	config_init();
 	user_station_loop_test_init();
 	//systick_delay_us(1000000);
@@ -1472,7 +1545,11 @@ void app_event()
 	}
 	
 	if( userStation_mode != USER_MODE_OFFLINE ){
+		#if USE_SERVER2
+		server2_event();
+		#else
 		server_event();
+		#endif
 	}
 	
 	userStation_listen_even();
