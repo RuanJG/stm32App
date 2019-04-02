@@ -10,6 +10,7 @@
 #if BOARD_Trex_V2
 
 
+#define MACHINE_OLD 1  // old machine switch define is difference
 
 
 #define _LOG(X...) if( 1 ) printf(X);
@@ -234,7 +235,11 @@ int get_voice_db()
 	
 	//db = (( adc*3300/4096 ) / 3162 ) *94; // 94: 1Pa=94db ; 3162: 3162mV/Pa 
 	//db = adc*3300*94*2/4096/3801; // adc*0.02395
+#if MACHINE_OLD
+	db = (adc*3344)/40960;
+#else
 	db = adc*0.039848;
+#endif
 	//_LOG("db=%d",db);
 	
 	//db = (adc*3300)/4096;
@@ -411,8 +416,11 @@ void switch_det_event()
 	
 	if( sw_counter >= SW_MAX_COUNT ){
 		//_LOG("sw=%d\n",sw_value);
-		//if( sw_value >= SW_MAX_COUNT ){
+#if MACHINE_OLD
+		if( sw_value >= SW_MAX_COUNT ){
+#else
 		if( sw_value == 0 ){
+#endif
 			sw_on_tag = 1;
 		}else {
 			sw_on_tag = 0;
