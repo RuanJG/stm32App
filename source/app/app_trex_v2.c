@@ -11,7 +11,7 @@
 
 
 #define MACHINE_OLD 1  // old machine switch define is difference
-#define USE_SERVER2 1
+#define USE_SERVER2 0 //just start thought current detection instead of swtich
 
 #define _LOG(X...) if( 1 ) printf(X);
 
@@ -246,7 +246,8 @@ int get_voice_db()
 	//sprintf(buffer,"db=%d",db);
 	//userStation_log( buffer );
 
-	return db;
+	//return db;
+	return adc;
 	
 }
 
@@ -458,6 +459,7 @@ struct config {
 	int db_max;
 	int db_min;
 	int machine_no;
+	float db_factor;
 };
 volatile struct config g_config;
 
@@ -541,6 +543,7 @@ void config_init()
 		g_config.db_max = 65;
 		g_config.db_min = 30;
 		g_config.machine_no = 'X';
+		g_config.db_factor = 0.080664;
 		config_save();
 	}
 }
@@ -733,7 +736,7 @@ void userStation_report_send_event()
 
 void userStation_send_config()
 {
-	unsigned char buffer[19];
+	unsigned char buffer[23];
 	
 	buffer[0]= USER_CONFIG_TAG;
 	buffer[1] = g_config.config_avaliable; // 1 available
@@ -742,6 +745,7 @@ void userStation_send_config()
 	memcpy( &buffer[10], (unsigned char*) &g_config.db_max, 4 ) ;
 	memcpy( &buffer[14], (unsigned char*) &g_config.db_min , 4 ); 
 	buffer[18] = g_config.machine_no;
+	memcpy( &buffer[19], (unsigned char*) &g_config.db_factor , 4 ); 
 	
 	if( 0 == userStation_send( buffer, sizeof(buffer) ) ){
 		_LOG("send config false\n");
@@ -754,7 +758,7 @@ void userStation_send_config()
 void userStation_handleMsg( unsigned char *data, int len)
 {
 	int dbmin,dbmax;
-	float cmax,cmin;
+	float cmax,cmin,dbfactor;
 	unsigned char buffer[32]={0};
 	
 	switch( data[0] ){
@@ -778,11 +782,13 @@ void userStation_handleMsg( unsigned char *data, int len)
 			break;
 		
 		case USER_CMD_VOICE_MAXMIN_TAG:
-			if( len == 9 ){
+			if( len == 13 ){
 				memcpy( (char*)&dbmax, data+1, 4);
 				memcpy( (char*)&dbmin, data+5, 4);
+				memcpy( (char*)&dbfactor, data+9, 4);
 				g_config.db_max = dbmax;
 				g_config.db_min = dbmin;
+				g_config.db_factor = dbfactor;
 				config_save();
 				userStation_send_config();
 				sprintf((char*)buffer,"db=[%d,%d]",g_config.db_min, g_config.db_max);
