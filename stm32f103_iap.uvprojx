@@ -452,6 +452,11 @@
               <FileType>1</FileType>
               <FilePath>.\source\app\app_UC_Shaver_testBoard.c</FilePath>
             </File>
+            <File>
+              <FileName>app_tsc3200_capture_freq.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_tsc3200_capture_freq.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

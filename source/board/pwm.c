@@ -320,3 +320,103 @@ int pwm_input( TIM_TypeDef* timer , unsigned short period, int freq_hz , int tim
 	return 0;
 }
 
+
+
+
+
+/**** Capture freq 
+
+unsigned short mPreiod,mPrescal,mFreq;
+
+void tc3200_freq_capture_init()
+{
+	TIM_ICInitTypeDef  TIM_ICInitStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+	GPIO_InitTypeDef GPIO_InitStructure;
+	TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+	
+	
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+	
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+    										  
+
+	//timer2~7 72Mhz , 
+	mPreiod = 64000; mPrescal = 5; mFreq = SystemCoreClock/mPreiod/(mPrescal);
+	TIM_TimeBaseStructure.TIM_Period = mPreiod -1 ; //设定计数器自动重装值 
+	TIM_TimeBaseStructure.TIM_Prescaler = mPrescal -1 ; 	//预分频器   
+	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //设置时钟分割:TDTS = Tck_tim
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  //TIM向上计数模式
+	TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure); //根据TIM_TimeBaseInitStruct中指定的参数初始化TIMx的时间基数单位
+
+	TIM_ICInitStructure.TIM_Channel     = TIM_Channel_3;
+	TIM_ICInitStructure.TIM_ICPolarity  = TIM_ICPolarity_Rising;
+	TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI;
+	TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;
+	TIM_ICInitStructure.TIM_ICFilter    = 0x0;
+	TIM_ICInit(TIM2, &TIM_ICInitStructure);
+
+
+	// Enable the Interrupt Request 
+	TIM_ITConfig(TIM2, TIM_IT_CC3 | TIM_IT_Update, ENABLE);
+	
+	// TIM enable counter
+	TIM_Cmd(TIM2, ENABLE);
+
+	// Enable the TIM2 global Interrupt
+	NVIC_InitStructure.NVIC_IRQChannel                       = TIM2_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority      = 0;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority             = 1;
+	NVIC_InitStructure.NVIC_IRQChannelCmd                     = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+	
+}
+
+volatile unsigned int periodCnt = 0;
+volatile unsigned int periodStartCnt = 0;
+volatile unsigned int periodUpdateCnt = 0;
+volatile unsigned char periodTag = 0;
+
+
+void TIM2_IRQHandler(void)
+{ 
+
+	unsigned short cnt;
+	if(TIM_GetITStatus(TIM2, TIM_IT_CC3) == SET) 
+	{
+		TIM_ClearITPendingBit(TIM2, TIM_IT_CC3);
+
+		cnt = TIM_GetCapture3(TIM2);
+		periodCnt = periodUpdateCnt + cnt - periodStartCnt;
+		periodTag = 1;
+		//for next capture
+		periodUpdateCnt = 0;
+		periodStartCnt = cnt;
+
+	}else if( TIM_GetITStatus(TIM2, TIM_IT_Update) == SET) {
+		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+		
+		periodUpdateCnt += (mPreiod - periodStartCnt);
+		periodStartCnt = 0; //TIM2->CNT;
+	}
+}
+
+int tc3200_getFreq()
+{
+	if( periodTag == 1 ){
+		periodTag = 0;
+		return (SystemCoreClock/mPrescal/periodCnt);
+	}else{
+		return -1;
+	}
+	
+}
+***********/
+
+
+
