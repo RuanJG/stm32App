@@ -123,11 +123,11 @@ void tc3200_gpio_init()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_Init(GPIOB, &GPIO_InitStructure); 
 	
-	E0(1);
-	S1(0);
-	S2(0);
+	E0(0);
+	S1(1);
+	S2(1);
 	S3(0);
-	S0(0);
+	S0(1);
 }
 
 
@@ -321,7 +321,6 @@ void app_init()
 #endif
 	//console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
 	console_init( CONSOLE_USB_TYPE ,NULL );
-	heart_led_init();
 	
 	pwm_init( TIM3, 2, 1000, 1000 ,0 , 0);
 	pwm_set(TIM3,2,0);
@@ -339,7 +338,6 @@ void app_event()
 		//_LOG("%d\n",periodCnt);
 	}
 	tc3200_cmd_even();
-	heart_led_even();
 }
 
 #endif
