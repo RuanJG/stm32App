@@ -9,31 +9,31 @@
 
 
 
-Uart_t *pConsoleUart = NULL;
+Uart_t *pConsoleUart = CONSOLE_NONE_TYPE;
 volatile int console_type=0 ;
 
 void console_init(int type, void * pridata )
 {
 	console_type = type;
 	
-	if( type == CONSOLE_UART_TYPE )
+	if( (type & CONSOLE_UART_TYPE)  != 0)
 		pConsoleUart = (Uart_t*) pridata;
-	
 }
 
 int fputc(int ch, FILE *f)
 {
 	//TODO lock ?
 	
-	if( console_type == CONSOLE_UART_TYPE && pConsoleUart != NULL ){
+	if( (console_type & CONSOLE_UART_TYPE) != 0   &&   pConsoleUart != NULL ){
 		Uart_Put( pConsoleUart, (unsigned char*)&ch, 1);
 	}
 	
-	if( console_type == CONSOLE_USB_TYPE ){
+	if( (console_type & CONSOLE_USB_TYPE) != 0){
 		USB_TxWrite( (unsigned char*)&ch, 1);
 	}
 	return (ch);
 }
+
 
 
 
@@ -49,7 +49,9 @@ void bsp_init()
 	//if no this setting , flash will very slow
 	FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
 	
+#if BOARD_USING_SYSTICK
 	systick_init(); 
+#endif
 
 #if BOARD_USING_USB
 	USB_Config();
@@ -59,18 +61,22 @@ void bsp_init()
 
 void bsp_event()
 {
-	//can run something like i2c spi event, here I run systick event
+#if BOARD_USING_SYSTICK
 	systick_event();
+#endif
 	
 }
 
 void bsp_deinit()
 {
+#if BOARD_HAS_IAP
 	if ( 1== IAP_PORT_CAN1 )
 		CAN_DeInit(CAN1);
-	//if( 1 == IAP_PORT_UART)
-		//USART_Cmd(UARTDEV, DISABLE);	
+#endif
+
+#if BOARD_USING_SYSTICK	
 	systick_deinit();
+#endif
 }
 
 

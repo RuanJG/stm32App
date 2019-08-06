@@ -3,12 +3,6 @@
 #include "systick.h"
 #include "main_config.h"
 
-#define SysTick_Reloadvalue  8 //9-1
-
-
-#define SYSTICK_MS_MAX 0x7fffffff
-#define SYSTICK_OVERYFLOW_MAX 0x3fffffff
-
 
 volatile u32 TimingDelay = 0;
 volatile u32 systick_ms=0;
@@ -17,9 +11,9 @@ volatile char systick_ms_overflow = 0;
 
 void systick_init(void)
 {
-	SysTick_CLKSourceConfig(SysTick_CLKSource_HCLK_Div8);		//×î¸ß9MHz
-
-	SysTick->LOAD=SysTick_Reloadvalue;
+	//freq(1Mhz) = SystemCoreClock/[SysTick_CLKSource_HCLK_Div8]/(SysTick->LOAD+1)
+	SysTick_CLKSourceConfig(SysTick_CLKSource_HCLK);
+	SysTick->LOAD= (uint32_t)((SystemCoreClock/1000000)-1);
 	NVIC_SetPriority(SysTick_IRQn, CUSTOM_SYSTICK_IRQ_PRIORITY);
 	SysTick->CTRL|=0x02;
 	SysTick->CTRL|=0x01;

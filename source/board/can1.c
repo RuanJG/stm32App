@@ -2,6 +2,10 @@
 #include "main_config.h"
 #include "fifo.h"
 
+#if BOARD_HAS_IAP
+#include "iap.h"
+#endif
+
 FIFO_DEF(can1fifo, 1, 128);
 
 

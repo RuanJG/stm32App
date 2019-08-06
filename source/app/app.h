@@ -6,6 +6,6 @@
 
 extern void app_init(void );
 extern void app_event(void);
-
+extern void app_SystemInit (void);
 
 #endif 

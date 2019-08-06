@@ -2,7 +2,7 @@
 #define _SYSTICK_H_
 
 
-#define SYSTICK_MS_MAX 0x0fffffff
+#define SYSTICK_MS_MAX 0x7fffffff
 #define SYSTICK_OVERYFLOW_MAX 0x3fffffff
 
 // base funtion after run SysTick_Configuration()

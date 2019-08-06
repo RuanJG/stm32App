@@ -116,6 +116,7 @@ int clean_iap_tag()
 
 void iap_config_vect_table()
 {
+	//Vector Table base offset field. This value must be a multiple of 0x200. */
 	NVIC_SetVectorTable(NVIC_VectTab_FLASH, IAP_APP_ADDRESS-IAP_FIRMWARE_ADRESS);
 }
 
@@ -275,7 +276,7 @@ void iap_init_in_usb()
 
 
 
-void iap_can_receive_handler(unsigned char c )
+void iap_can_receive_handler(unsigned char c)
 {
 	iap_parase(c);
 }

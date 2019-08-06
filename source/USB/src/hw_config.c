@@ -98,7 +98,11 @@ void Set_System(void)
 void Set_USBClock(void)
 {
   /* Select USBCLK source */
-  RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5);
+  if( SystemCoreClock == 72000000 ){
+		RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5);
+	}else{
+		RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_Div1);
+	}
   
   /* Enable the USB clock */
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_USB, ENABLE);

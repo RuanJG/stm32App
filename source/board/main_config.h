@@ -4,7 +4,32 @@
 #include "stm32f10x.h"
 
 
-//********************************************************** config irq priority
+//#####################################################   choose board && config MCU type, hse clock
+
+//!!!!!!!    in "Options for Target" , like "STM32F10X_MD,HSE_VALUE=8000000 " 
+/* #define STM32F10X_LD */     /*!< STM32F10X_LD: STM32 Low density devices */
+/* #define STM32F10X_LD_VL */  /*!< STM32F10X_LD_VL: STM32 Low density Value Line devices */  
+/* #define STM32F10X_MD */     /*!< STM32F10X_MD: STM32 Medium density devices */
+/* #define STM32F10X_MD_VL */  /*!< STM32F10X_MD_VL: STM32 Medium density Value Line devices */  
+/* #define STM32F10X_HD */     /*!< STM32F10X_HD: STM32 High density devices */
+/* #define STM32F10X_HD_VL */  /*!< STM32F10X_HD_VL: STM32 High density value line devices */  
+/* #define STM32F10X_XL */     /*!< STM32F10X_XL: STM32 XL-density devices */
+/* #define STM32F10X_CL */     /*!< STM32F10X_CL: STM32 Connectivity line devices */
+
+#define BOARD_IR_TESTBOARD			0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_MOTOR 						0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_QIPAD							0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_Trex_V2						0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_MOTOR_COOPERATE 	0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_MULTIKILL_PCBA 		0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_UC_SHAVER_SAMPLE 	0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_TSC3200 					0  //STM32F10X_MD,HSE_VALUE=8000000
+#define BOARD_CSWL_LED_MONITOR 	1  //STM32F10X_MD,HSE_VALUE=16000000
+
+
+
+
+//##################################################### config irq priority
 
 #define CUSTOM_SYSTICK_IRQ_PRIORITY 	NVIC_PriorityGroup_2
 
@@ -24,50 +49,32 @@
 
 
 
+//#####################################################  Common Config 
 
-
-//#####################################################   choose board
-
-#define BOARD_IR_TESTBOARD	0
-#define BOARD_MOTOR 				0
-#define BOARD_QIPAD					0
-#define BOARD_Trex_V2				0
-#define BOARD_MOTOR_COOPERATE 0
-#define BOARD_MULTIKILL_PCBA 0
-#define BOARD_UC_SHAVER_SAMPLE 0
-#define BOARD_TSC3200 1
-
-
-//#####################################################   Config
-
-//-----------------------Common Config
-
-//**********************************************************  config board hse clock
-//config hse in "Options for Target" 
-//STM32F10X_MD,HSE_VALUE=8000000
-
-//******************************************************** config iap 
-//check config in  "iap.h"
+//****** config iap ( more config in  "iap.h" )
 #define BOARD_HAS_IAP  1
 #define IAP_PORT_UART  0
 #define IAP_PORT_CAN1  0  // not support now
 #define IAP_PORT_USB   1
 
-//**********************************************************  config using usb/can1
+//******  config using usb  (can1 and  usb  can't use in the sametime )
 #define BOARD_USING_USB 1
 #define USB_COM_RX_BUF_SIZE       512			//  (1024 + 256)
 #define USB_COM_TX_BUF_SIZE       512			//  (1024 + 256)
 
-//********************************************************* config can1
-#define BOARD_USING_CAN1 0   // can1 and  usb  can't use in the sametime
+//****** config can1 (can1 and  usb  can't use in the sametime )
+#define BOARD_USING_CAN1 0  
+
+//****** config using systick for time 
+#define BOARD_USING_SYSTICK 1
+
+//****** board has special clk setup  
+#define BOARD_PRIVATE_SETUP_CLK  0
 
 
 
 
-
-
-//------------------------Board special Config
-
+//#####################################################   Board special Config
 #if BOARD_Trex_V2
 
 //******** config iap 
@@ -79,9 +86,7 @@
 #define USB_COM_RX_BUF_SIZE       256			//  (1024 + 256)
 #define USB_COM_TX_BUF_SIZE       256			//  (1024 + 256)
 
-#endif
-
-
+#endif //BOARD_UC_SHAVER_SAMPLE
 
 
 #if BOARD_UC_SHAVER_SAMPLE
@@ -95,9 +100,18 @@
 #define USB_COM_RX_BUF_SIZE       256			//  (1024 + 256)
 #define USB_COM_TX_BUF_SIZE       256			//  (1024 + 256)
 
-#endif
+#endif //BOARD_UC_SHAVER_SAMPLE
 
 
+
+#if BOARD_CSWL_LED_MONITOR
+
+#define IAP_PORT_UART  1
+#define IAP_PORT_USB   0
+#define BOARD_USING_SYSTICK 0
+#define BOARD_PRIVATE_SETUP_CLK  1
+
+#endif //BOARD_CSWL_LED_MONITOR
 
 
 

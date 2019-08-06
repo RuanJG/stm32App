@@ -58,10 +58,10 @@
 
 
 void iap_config_vect_table(void);
-void iap_can_receive_handler(unsigned char c );
+void iap_can_receive_handler(unsigned char c);
 void iap_init_in_can1(void);
 void iap_init_in_uart(Uart_t *uart);
-void iap_init_in_usb();
+void iap_init_in_usb(void);
 void iap_usb_receive_handler(unsigned char c);
 
 
