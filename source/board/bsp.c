@@ -14,10 +14,14 @@ volatile int console_type=0 ;
 
 void console_init(int type, void * pridata )
 {
-	console_type = type;
+	if( type == CONSOLE_USB_TYPE  && BOARD_USING_USB == 1 ){
+		console_type |= type;
+	}
 	
-	if( (type & CONSOLE_UART_TYPE)  != 0)
+	if( (type == CONSOLE_UART_TYPE) && (pridata != NULL) ){
+		console_type |= type;
 		pConsoleUart = (Uart_t*) pridata;
+	}
 }
 
 int fputc(int ch, FILE *f)
@@ -50,7 +54,7 @@ void bsp_init()
 	FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);
 	
 #if BOARD_USING_SYSTICK
-	systick_init(); 
+	systick_init(BOARD_SYSTICK_FREQ); 
 #endif
 
 #if BOARD_USING_USB
@@ -69,14 +73,7 @@ void bsp_event()
 
 void bsp_deinit()
 {
-#if BOARD_HAS_IAP
-	if ( 1== IAP_PORT_CAN1 )
-		CAN_DeInit(CAN1);
-#endif
-
-#if BOARD_USING_SYSTICK	
-	systick_deinit();
-#endif
+		//NO necessary now
 }
 
 

@@ -67,9 +67,11 @@
 
 //****** config using systick for time 
 #define BOARD_USING_SYSTICK 1
+#define BOARD_SYSTICK_FREQ	1000
 
 //****** board has special clk setup  
 #define BOARD_PRIVATE_SETUP_CLK  0
+
 
 
 
@@ -105,10 +107,11 @@
 
 
 #if BOARD_CSWL_LED_MONITOR
-
+#define BOARD_HAS_IAP  0
 #define IAP_PORT_UART  1
 #define IAP_PORT_USB   0
-#define BOARD_USING_SYSTICK 0
+#define BOARD_USING_USB 0
+#define BOARD_USING_SYSTICK 1
 #define BOARD_PRIVATE_SETUP_CLK  1
 
 #endif //BOARD_CSWL_LED_MONITOR
