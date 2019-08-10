@@ -127,7 +127,7 @@ int protocol_parse(protocol_t * coder, unsigned char c )
 {
 	if( coder->inited != 1 ) return 0;
 	
-	if( coder->index >= MAX_PACKET_SIZE )
+	if( coder->index >= PROTOCOL_MAX_PACKET_SIZE )
 	{
 		coder->error_count ++;
 		coder->index = 0;
@@ -172,10 +172,10 @@ int protocol_encode(protocol_t * coder, unsigned char* data, int len)
 {
 	int res;
 	
-	if( len > MAX_PACKET_SIZE )
+	if( len > PROTOCOL_MAX_PACKET_SIZE )
 		return 0;
 	
-	res = Pack_Data(data, len, coder->data, MAX_PACKET_SIZE);
+	res = Pack_Data(data, len, coder->data, PROTOCOL_MAX_PACKET_SIZE);
 	if( res < 0 ){
 		return 0;
 	}

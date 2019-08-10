@@ -13,7 +13,8 @@
 
 
 volatile int debug_en = 1;
-#define _LOG(X...) if( debug_en ) printf(X)
+#define _LOGW(X...) if( debug_en ) { printf("Warn: %s",__FUNCTION__); printf(X);}
+#define _LOGE(X...) printf("ERROR: %s",__FUNCTION__); printf(X)
 
 Uart_t Uart1;
 Uart_t Uart3;
@@ -306,6 +307,166 @@ void Uart_USB_SWJ_init()
 }
 
 
+
+
+
+
+//protocol msg packget  [tag][data]
+// tag: high 4 bits is fixed for packget type
+//      low 4 bits is for custom
+#define PMSG_TAG_ACK		0x10
+#define PMSG_TAG_LOG		0x20
+#define PMSG_TAG_DATA		0x30
+#define PMSG_TAG_CMD		0x40
+#define IS_PMSG_TAG(T,V) (( V & 0xf0 ) == T)
+
+
+typedef struct _PMSG_msg_t{
+	unsigned char tag;
+	unsigned char data[PROTOCOL_MAX_PACKET_SIZE];
+	int data_len;
+}PMSG_msg_t;
+
+//transmit func : for sending , return the number sent; for reading , return the number read which data in *data, data len in len
+typedef int (*PMSG_transmit_handler_type)( unsigned char *data, int len );
+typedef void (*PMSG_msg_handler_type)( PMSG_msg_t msg);
+
+
+Uart_t *pUart;
+PMSG_transmit_handler_type _PMSG_sendbytes_handler;
+PMSG_transmit_handler_type _PMSG_readbytes_handler;
+PMSG_msg_handler_type _PMSG_msg_handler;
+protocol_t PMSG_decoder;
+protocol_t PMSG_encoder;
+PMSG_msg_t PMSG_msg;
+
+//the lowest send bytes function
+void _PMSG_send_bytes( unsigned char *data, int len)
+{
+	if( pUart != NULL ){
+		Uart_Put(pUart, data, len);
+	}
+	if( _PMSG_sendbytes_handler != NULL ){
+		_PMSG_sendbytes_handler(data, len);
+	}
+}
+
+// check one byte for msg, if get one , fill in msg and return 1, else 0
+int PMSG_parse_byte( unsigned char data , PMSG_msg_t *msg )
+{
+	if( 1 == protocol_parse( &PMSG_decoder , data ) )
+	{
+		msg->tag = PMSG_decoder.data[0];
+		if( PMSG_decoder.len > 1 ){
+			msg->data_len = PMSG_decoder.len-1;
+			memcpy( msg->data, PMSG_decoder.data, msg->data_len);
+		}else{
+			msg->data_len = 0;
+		}
+		
+		return 1;
+	}
+	return 0;
+}
+
+
+
+// read data  and if get one , fill in msg and return 1, else 0
+int PMSG_receive_msg( PMSG_msg_t *msg )
+{
+	unsigned char val;
+	int len, i;
+	
+	if( _PMSG_readbytes_handler != NULL )
+	{
+		for( i=0 ;i < PROTOCOL_MAX_PACKET_SIZE ; i++)
+		{
+			if( 1 == _PMSG_readbytes_handler( &val,1 ) ){
+				if( 1 == PMSG_parse_byte( val, msg ) )
+				{
+					return 1;
+				}
+			}else{
+				break;
+			}
+			
+		}
+	}
+	
+	if( pUart != NULL  )
+	{
+		for( i=0 ;i < PROTOCOL_MAX_PACKET_SIZE ; i++)
+		{
+			if( 1 == Uart_Get(pUart,&val,1 ) ){
+				if( 1 == PMSG_parse_byte( val, msg ) )
+				{
+					return 1;
+				}
+			}else{
+				break;
+			}
+			
+		}
+	}
+	return 0;
+}
+
+int PMSG_send_msg( unsigned char tag, unsigned char *data, int len)
+{
+	unsigned char packget[PROTOCOL_MAX_PACKET_SIZE];
+	
+	if( len > (PROTOCOL_MAX_PACKET_SIZE - 1) ) return 0;
+	
+	packget[0] = tag;
+	memcpy( &packget[1] , data, len);
+	if( 0 == protocol_encode( &PMSG_encoder, packget, len+1) ) return 0;
+	_PMSG_send_bytes( PMSG_encoder.data, PMSG_encoder.len );
+	return 1;
+}
+
+
+// init , can use uart or customed send and receive interface , if no avaliable , set NULL 
+void PMSG_init( Uart_t *uart , PMSG_msg_handler_type msg_func, PMSG_transmit_handler_type sendbytes_func , PMSG_transmit_handler_type  readbytes_func)
+{
+	pUart = uart;
+	_PMSG_sendbytes_handler = sendbytes_func;
+	_PMSG_readbytes_handler = readbytes_func;
+	_PMSG_msg_handler = msg_func;
+	protocol_init( &PMSG_decoder );
+	protocol_init( &PMSG_encoder );
+}
+
+
+// user can ignore this even() , you can use PMSG_receive_msg() or PMSG_parse_byte() to get the msg and then deal with them yourselve
+void PMSG_even()
+{
+	
+	if( _PMSG_msg_handler == NULL ) return;
+	
+	if( 1 == PMSG_receive_msg( &PMSG_msg ) )
+	{
+		_PMSG_msg_handler( PMSG_msg );
+	}
+}
+
+
+//for example 
+#define PMSG_TAG_LOGE  (PMSG_TAG_LOG|0x1)
+#define PMSG_TAG_LOGI  (PMSG_TAG_LOG|0x2)
+
+void PC_LOGI(X...) PMSG_send_msg( PMSG_TAG_LOGI )
+
+
+void PC_msg_handler(PMSG_msg_t msg)
+{
+	
+	
+}
+
+
+
+
+
 #define CAPTURE_IDEL			0
 #define CAPTURE_STARTED		1
 #define CAPTURE_FINISH		2
@@ -486,57 +647,194 @@ int capture_counter_check(int *freq1_6, int *freq_7_12)
 
 
 
+typedef enum _LED_ID {
+	LED1 = 0,
+	LED2,LED3,LED4,LED5,LED6,LED7,LED8,LED9,LED10,LED11,LED12	
+}LED_ID_Type;
+
+volatile unsigned char led_regs[12];
+volatile unsigned char led_regs_feedback[12];
+volatile unsigned char led_update_status;
+
+#define LED_STATUS_ENABLE			0x00
+#define LED_STATUS_DISABLE		0x10
+#define LED_STATUS_COLOR_RED				0x00
+#define LED_STATUS_COLOR_GREEN			0x0C
+#define LED_STATUS_COLOR_BLUE				0x08
+#define LED_STATUS_COLOR_CLEAR				0x04
+#define LED_STATUS_FREQ_100		0x03
+#define LED_STATUS_FREQ_20		0x01
+#define LED_STATUS_FREQ_2			0x02
+#define LED_STATUS_FREQ_OFF			0x00
+#define LED_STATUS_LED_ON				0x00
+#define LED_STATUS_LED_OFF				0x20
+
+#define LED_STATUS_OK  1
+#define LED_STATUS_NG   0
+
+#define LED_SERIAL_INPUT(X) GPIO_WriteBit( GPIOB, GPIO_Pin_4 , X)
+#define LED_SERIAL_nEN(X)   GPIO_WriteBit( GPIOB, GPIO_Pin_5 , X)
+#define LED_SERIAL_LOCK(X)  GPIO_WriteBit( GPIOB, GPIO_Pin_6 , X)
+#define LED_SERIAL_CLK(X)   GPIO_WriteBit( GPIOB, GPIO_Pin_7 , X)
+#define LED_SERIAL_REGCLR(X)   GPIO_WriteBit( GPIOB, GPIO_Pin_8 , X)
+#define LED_SERIAL_OUTPUT() GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_3)
+
+#define LED_HAS_SERIAL_74HC595    0  // if using the 74HC595 
 
 
-#define S0(X) GPIO_WriteBit( GPIOB, GPIO_Pin_1 , X)
-#define S1(X) GPIO_WriteBit( GPIOB, GPIO_Pin_0 , X)
-#define S2(X) GPIO_WriteBit( GPIOA, GPIO_Pin_6 , X)
-#define S3(X) GPIO_WriteBit( GPIOA, GPIO_Pin_5 , X)
-#define E0(X) GPIO_WriteBit( GPIOA, GPIO_Pin_4 , X)
+void _sn74hc595_delay_nop()
+{
+	volatile int i=10;
+	while( i-- > 0 ) __NOP();
+}
 
-void tc3200_gpio_init()
+void _sn74hc595_update_regs()
+{
+	int i ,index;
+	unsigned char reg;
+	unsigned char reg_feedback;
+	
+	
+	for( i = LED1; i<= LED12; i++ )
+	{
+		reg = led_regs[i];
+		reg_feedback = 0;
+		for( index = 0; index < 6 ; index++)
+		{
+			LED_SERIAL_INPUT( (reg>>index) & 0x1 );
+			LED_SERIAL_CLK(0);
+		  _sn74hc595_delay_nop();
+			LED_SERIAL_CLK(1);
+			_sn74hc595_delay_nop();
+			reg_feedback = (reg_feedback<<index) | LED_SERIAL_OUTPUT();
+		}
+		led_regs_feedback[LED12-i] = reg_feedback;
+	}
+}
+
+
+void capture_select_led( LED_ID_Type led )
+{
+	if( led >= LED1 && led <= LED6 )
+	{
+		GPIO_WriteBit( GPIOB, GPIO_Pin_0 , (led&0x1) );
+		GPIO_WriteBit( GPIOB, GPIO_Pin_1 , (led&0x2)>>1 );
+		GPIO_WriteBit( GPIOB, GPIO_Pin_2 , (led&0x4)>>2 );
+	}else if ( led >= LED7 && led <= LED12 ){
+		led -= 6 ;
+		GPIO_WriteBit( GPIOA, GPIO_Pin_8 , (led&0x1) );
+		GPIO_WriteBit( GPIOA, GPIO_Pin_7 , (led&0x2)>>1 );
+		GPIO_WriteBit( GPIOA, GPIO_Pin_6 , (led&0x4)>>2 );
+	}
+}
+
+/*
+update the store reg
+if return 0 sussefuly , -1 failed
+*/
+int catpure_select_update_led_status()
+{
+	int i,retry,res;
+	
+	if( 0 == LED_HAS_SERIAL_74HC595 ){
+		// tsc3200 is control by hardware
+		led_update_status = LED_STATUS_OK;
+		return 0;
+	}
+	
+	//clear shift reg
+	LED_SERIAL_REGCLR(0);
+	systick_delay_ms(1);
+	LED_SERIAL_REGCLR(1);
+	
+	//shift data
+	retry  =  4; // at less 2 times
+	while( 0 < retry-- )
+	{
+		_sn74hc595_update_regs();
+		res = 1;
+		for( i = LED1; i<= LED12; i++ )
+		{
+			if( led_regs[i] != led_regs_feedback[i] ){
+				res = 0;
+				break;
+			}
+		}
+		if( res = 1 ) break;
+	}
+
+	if( res == 1 )
+	{
+		//store to sotre reg
+		LED_SERIAL_LOCK(0);
+		_sn74hc595_delay_nop();
+		LED_SERIAL_LOCK(1);
+		// enable output
+		LED_SERIAL_nEN(0); 
+		
+		led_update_status = LED_STATUS_OK;
+	}else{
+		led_update_status = LED_STATUS_NG;
+	}
+	
+	return res==1 ? 0:-1;
+}
+
+void capture_select_set_led_status(LED_ID_Type led, unsigned char status)
+{
+	led_regs[ led ] = status;
+}
+
+
+void catpure_select_init()
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
+	int i;
 	
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
-	
-	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_13;
+
+	//74h151 , output select
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2;
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
-	GPIO_Init(GPIOC, &GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_OD ;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
-		GPIO_InitStructure.GPIO_Pin=GPIO_Pin_3;
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_7 | GPIO_Pin_6;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+	
+	capture_select_led(LED1);
+	capture_select_led(LED7);
+	
+	//74h595 , led status control 
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_8;
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_Out_PP ;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin=GPIO_Pin_3;
+	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_IN_FLOATING ;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
+	LED_SERIAL_nEN(1); // high , output disabled
+	LED_SERIAL_REGCLR(0); // low , shift reg clear
+	LED_SERIAL_LOCK(0); // rise to triggle locking , so prepare now
+	LED_SERIAL_CLK(0);
 	
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
+	for( i = LED1; i<= LED12; i++ ){
+		capture_select_set_led_status( i,  LED_STATUS_ENABLE | LED_STATUS_COLOR_CLEAR | LED_STATUS_FREQ_100 | LED_STATUS_LED_OFF );
+	}
+	catpure_select_update_led_status();
+	if ( LED_STATUS_NG ==  led_update_status){
+		_LOGE("update 74hc595 reg failed\n");
+	}
 	
-	GPIO_StructInit(&GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1 | GPIO_Pin_0;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_Init(GPIOB, &GPIO_InitStructure); 
-	
-	E0(0);
-	S1(1);
-	S2(1);
-	S3(0);
-	S0(1);
 }
+
 
 
 
@@ -550,11 +848,9 @@ void tc3200_gpio_init()
 
 void capture_init()
 {
+	catpure_select_init();
 	capture_counter_init();
 	
-	//TODO tsc3200 init
-	tc3200_gpio_init();
-
 	capture_counter_start();
 }
 
@@ -567,7 +863,7 @@ void capture_loop()
 	
 	if( 1 == capture_counter_check(&freq1, &freq2) ){
 		systick_delay_ms(50);
-		_LOG("%d   ,  %d\n", freq1,freq2);
+		_LOGW("%d   ,  %d\n", freq1,freq2);
 		capture_counter_start();
 	}
 	
@@ -584,8 +880,8 @@ void cmd_even()
 	
 	if( len == 0 ) return;
 
-	if( buffer[0] == '1' ){
-
+	if( buffer[0] == 'd' ){
+		debug_en = debug_en ? 0:1;
 	}else if( buffer[0] == '0' ){
 
 	}

@@ -38,12 +38,12 @@ Frame: {
 #define PORT_USART           0x00
 #define PORT_CAN             0x01
 
-#define MAX_PACKET_SIZE      128
+#define PROTOCOL_MAX_PACKET_SIZE      128
 
 
 
 typedef struct _protocol_t {
-	unsigned char data[MAX_PACKET_SIZE*2+3];
+	unsigned char data[PROTOCOL_MAX_PACKET_SIZE*2+3];
 	unsigned char error_count;
 	unsigned char ok_count;
 	unsigned char decode_rate;
