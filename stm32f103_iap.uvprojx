@@ -367,7 +367,7 @@
             <v6LangP>0</v6LangP>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>STM32F10X_MD,HSE_VALUE=8000000</Define>
+              <Define>STM32F10X_MD,HSE_VALUE=16000000</Define>
               <Undefine></Undefine>
               <IncludePath>.\source\app;.\source\board;.\source\USB\lib;.\source\USB\src;.\source\applib</IncludePath>
             </VariousControls>
