@@ -18,6 +18,8 @@
 Uart_t *uart1_p ;
 Uart_t *uart2_p ;
 Uart_t *uart3_p ;
+Uart_t *uart4_p ;
+Uart_t *uart5_p ;
 
 void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_BaudRate, uint16_t USART_WordLength, uint16_t USART_StopBits, uint16_t USART_Parity)
 {		  
@@ -35,6 +37,12 @@ void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_Ba
 		RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE); 	
 	}else if( uartDev == USART3 ){
 		RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+	}else if ( uartDev == UART4 ) {
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
+	}else if( uartDev == UART5 ) {
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART5, ENABLE);
+	}else{
+		return ;
 	}
 	
 	// uart base config
@@ -72,6 +80,16 @@ void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_Ba
 		NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
 		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_UART3_IRQ_PREPRIORITY;
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_UART3_IRQ_SUBPRIORITY;
+	}else if( uartDev == UART4 ){
+		uart4_p = uart;
+		NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn;
+		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_UART4_IRQ_PREPRIORITY;
+		NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_UART4_IRQ_SUBPRIORITY;
+	}else if( uartDev == UART5 ){
+		uart5_p = uart;
+		NVIC_InitStructure.NVIC_IRQChannel = UART5_IRQn;
+		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_UART5_IRQ_PREPRIORITY;
+		NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_UART5_IRQ_SUBPRIORITY;
 	}
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStructure);	
@@ -151,7 +169,15 @@ void USART3_IRQHandler(void)
 	_uart_irq_function(uart3_p);
 }
 
+void UART4_IRQHandler(void)
+{
+	_uart_irq_function(uart4_p);
+}
 
+void UART5_IRQHandler(void)
+{
+	_uart_irq_function(uart5_p);
+}
 
 int Uart_Get(Uart_t *uart, unsigned char *buffer, int count){
 	// return the count of the data filled in buffer from uart fifo 

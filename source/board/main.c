@@ -5,12 +5,7 @@
 
 
 int main()
-{
-	
-#if BOARD_PRIVATE_SETUP_CLK
-	app_SystemInit();
-#endif
-	
+{	
 	bsp_init();
 	app_init();
 
