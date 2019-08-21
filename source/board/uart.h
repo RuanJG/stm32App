@@ -5,7 +5,7 @@
 #include  <ctype.h>
 #include  <string.h>
 #include  <stdio.h>	
-
+#include "stm32f10x.h"
 
 
 

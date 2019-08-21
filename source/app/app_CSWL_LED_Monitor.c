@@ -8,6 +8,8 @@
 #include "iap.h"
 #include "hw_config.h"
 #include "flashRW.h"
+#include "Pmsg.h"
+
 
 #if BOARD_CSWL_LED_MONITOR
 
@@ -16,6 +18,25 @@ volatile int debug_en = 1;
 #define _LOGW(X...) if( debug_en ) { printf("Warn: %s",__FUNCTION__); printf(X);}
 #define _LOGE(X...) printf("ERROR: %s",__FUNCTION__); printf(X)
 
+
+#define PC_TAG_LOGE  (PMSG_TAG_LOG|0x1)
+#define PC_TAG_LOGI  (PMSG_TAG_LOG|0x2)
+
+unsigned char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
+#define PC_LOG(T, X...) { snprintf( logbuffer, sizeof( logbuffer ), X);  PMSG_send_msg( T , logbuffer, strlen(logbuffer) ); }
+#define PC_LOGI(X...) PC_LOG( PC_TAG_LOGI , X)
+#define PC_LOGE(X...) PC_LOG( PC_TAG_LOGE , X)
+
+
+#define PC_TAG_CMD_CAPTURE_EN  (PMSG_TAG_CMD | 0x01 ) // data[0] = 1 auto start, data[0] = 0 stop
+#define PC_TAG_CMD_LED_SELECT  (PMSG_TAG_CMD | 0x02 )  // data[0] = led id [1~12], data[1] = status
+#define PC_TAG_CMD_CAPTURE_INTERVAL  (PMSG_TAG_CMD | 0x03 )  //data[0] = ms_L, data[1] = ms_H
+#define PC_TAG_CMD_TEST (PMSG_TAG_CMD | 0x04 ) 
+#define PC_TAG_CMD_SWITCHES_TESTMODE (PMSG_TAG_CMD | 0x05 ) // data[0] = 2,3,4,5 , FF mean off all
+#define PC_TAG_CMD_SWITCHES_CHANNEL (PMSG_TAG_CMD | 0x06 ) // data[0] = 0~15 , FF mean off all
+
+
+#define PC_TAG_DATA_LED_BRIGHTNESS (PMSG_TAG_DATA|0x1)
 
 
 
@@ -313,170 +334,6 @@ void Uart_USB_SWJ_init()
 
 
 
-
-
-
-//protocol msg packget  [tag][data]
-// tag: high 4 bits is fixed for packget type
-//      low 4 bits is for custom
-#define PMSG_TAG_ACK		0x10
-#define PMSG_TAG_LOG		0x20
-#define PMSG_TAG_DATA		0x30
-#define PMSG_TAG_CMD		0x40
-#define IS_PMSG_TAG(T,V) (( V & 0xf0 ) == T)
-
-
-typedef struct _PMSG_msg_t{
-	unsigned char tag;
-	unsigned char data[PROTOCOL_MAX_PACKET_SIZE];
-	int data_len;
-}PMSG_msg_t;
-
-//transmit func : for sending , return the number sent; for reading , return the number read which data in *data, data len in len
-typedef int (*PMSG_transmit_handler_type)( unsigned char *data, int len );
-typedef void (*PMSG_msg_handler_type)( PMSG_msg_t msg);
-
-
-Uart_t *pUart;
-PMSG_transmit_handler_type _PMSG_sendbytes_handler;
-PMSG_transmit_handler_type _PMSG_readbytes_handler;
-PMSG_msg_handler_type _PMSG_msg_handler;
-protocol_t PMSG_decoder;
-protocol_t PMSG_encoder;
-PMSG_msg_t PMSG_msg;
-
-//the lowest send bytes function
-void _PMSG_send_bytes( unsigned char *data, int len)
-{
-	if( pUart != NULL ){
-		Uart_Put(pUart, data, len);
-	}
-	if( _PMSG_sendbytes_handler != NULL ){
-		_PMSG_sendbytes_handler(data, len);
-	}
-}
-
-// check one byte for msg, if get one , fill in msg and return 1, else 0
-int PMSG_parse_byte( unsigned char data , PMSG_msg_t *msg )
-{
-	if( 1 == protocol_parse( &PMSG_decoder , data ) )
-	{
-		msg->tag = PMSG_decoder.data[0];
-		if( PMSG_decoder.len > 1 ){
-			msg->data_len = PMSG_decoder.len-1;
-			memcpy( msg->data, PMSG_decoder.data+1, msg->data_len);
-		}else{
-			msg->data_len = 0;
-		}
-		
-		return 1;
-	}
-	return 0;
-}
-
-
-
-// read data  and if get one , fill in msg and return 1, else 0
-int PMSG_receive_msg( PMSG_msg_t *msg )
-{
-	unsigned char val;
-	int len, i;
-	
-	if( _PMSG_readbytes_handler != NULL )
-	{
-		for( i=0 ;i < PROTOCOL_MAX_PACKET_SIZE ; i++)
-		{
-			if( 1 == _PMSG_readbytes_handler( &val,1 ) ){
-				if( 1 == PMSG_parse_byte( val, msg ) )
-				{
-					return 1;
-				}
-			}else{
-				break;
-			}
-			
-		}
-	}
-	
-	if( pUart != NULL  )
-	{
-		for( i=0 ;i < PROTOCOL_MAX_PACKET_SIZE ; i++)
-		{
-			if( 1 == Uart_Get(pUart,&val,1 ) ){
-				if( 1 == PMSG_parse_byte( val, msg ) )
-				{
-					return 1;
-				}
-			}else{
-				break;
-			}
-			
-		}
-	}
-	return 0;
-}
-
-int PMSG_send_msg( unsigned char tag, unsigned char *data, int len)
-{
-	unsigned char packget[PROTOCOL_MAX_PACKET_SIZE];
-	
-	if( len > (PROTOCOL_MAX_PACKET_SIZE - 1) ) return 0;
-	
-	packget[0] = tag;
-	memcpy( &packget[1] , data, len);
-	if( 0 == protocol_encode( &PMSG_encoder, packget, len+1) ) return 0;
-	_PMSG_send_bytes( PMSG_encoder.data, PMSG_encoder.len );
-	return 1;
-}
-
-
-// init , can use uart or customed send and receive interface , if no avaliable , set NULL 
-void PMSG_init( Uart_t *uart , PMSG_msg_handler_type msg_func, PMSG_transmit_handler_type sendbytes_func , PMSG_transmit_handler_type  readbytes_func)
-{
-	pUart = uart;
-	_PMSG_sendbytes_handler = sendbytes_func;
-	_PMSG_readbytes_handler = readbytes_func;
-	_PMSG_msg_handler = msg_func;
-	protocol_init( &PMSG_decoder );
-	protocol_init( &PMSG_encoder );
-}
-
-
-// user can ignore this even() , you can use PMSG_receive_msg() or PMSG_parse_byte() to get the msg and then deal with them yourselve
-void PMSG_even()
-{
-	
-	if( _PMSG_msg_handler == NULL ) return;
-	
-	if( 1 == PMSG_receive_msg( &PMSG_msg ) )
-	{
-		_PMSG_msg_handler( PMSG_msg );
-	}
-}
-
-
-
-
-//for example 
-
-#define PC_TAG_LOGE  (PMSG_TAG_LOG|0x1)
-#define PC_TAG_LOGI  (PMSG_TAG_LOG|0x2)
-
-unsigned char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
-#define PC_LOG(T, X...) { snprintf( logbuffer, sizeof( logbuffer ), X);  PMSG_send_msg( T , logbuffer, strlen(logbuffer) ); }
-#define PC_LOGI(X...) PC_LOG( PC_TAG_LOGI , X)
-#define PC_LOGE(X...) PC_LOG( PC_TAG_LOGE , X)
-
-
-#define PC_TAG_CMD_CAPTURE_EN  (PMSG_TAG_CMD | 0x01 ) // data[0] = 1 auto start, data[0] = 0 stop
-#define PC_TAG_CMD_LED_SELECT  (PMSG_TAG_CMD | 0x02 )  // data[0] = led id [1~12], data[1] = status
-#define PC_TAG_CMD_CAPTURE_INTERVAL  (PMSG_TAG_CMD | 0x03 )  //data[0] = ms_L, data[1] = ms_H
-#define PC_TAG_CMD_TEST (PMSG_TAG_CMD | 0x04 ) 
-#define PC_TAG_CMD_SWITCHES_TESTMODE (PMSG_TAG_CMD | 0x05 ) // data[0] = 2,3,4,5 , FF mean off all
-#define PC_TAG_CMD_SWITCHES_CHANNEL (PMSG_TAG_CMD | 0x06 ) // data[0] = 0~15 , FF mean off all
-
-
-#define PC_TAG_DATA_LED_BRIGHTNESS (PMSG_TAG_DATA|0x1)
 
 
 
