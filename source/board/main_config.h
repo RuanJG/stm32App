@@ -27,6 +27,7 @@
 #define BOARD_CSWL_LED_MONITOR 	0  //STM32F10X_MD,HSE_VALUE=16000000
 #define BOARD_CSWL_CONTROL_BOARD 	1  //STM32F10X_HD,HSE_VALUE=16000000
 
+#define BOARD_IAP			0  // Select the same config(MCU type, hse clock) as the board you choise 
 
 
 //##################################################### config irq priority
@@ -73,14 +74,44 @@
 #define BOARD_USING_SYSTICK 1
 #define BOARD_SYSTICK_FREQ	1000
 
-//****** board has special clk setup  
+//****** board has special clk setup  , if all 0 , will use the system_init in lib
+#define BOARD_COMMON_SETUP_CLK  1
 #define BOARD_PRIVATE_SETUP_CLK  0
 
 
 
 
-
 //#####################################################   Board special Config
+#if BOARD_IAP
+//IAP setup
+#define IAP_PORT_UART 1
+#define IAP_UARTDEV		 	USART1
+#define IAP_UART_TX_GPIO 	GPIOA
+#define IAP_UART_TX_PIN 	GPIO_Pin_9 
+#define IAP_UART_RX_GPIO 	GPIOA
+#define IAP_UART_RX_PIN 	GPIO_Pin_10
+#define IAP_UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
+#define IAP_UART_BAUDRATE	115200
+#define IAP_PORT_CAN1  0  
+#define IAP_PORT_USB   0
+#define IAP_GPIO_DETECTION 0
+#define IAP_GPIO GPIOB
+#define IAP_GPIO_PIN GPIO_Pin_2
+#define IAP_GPIO_LEVEL 1
+//Board config
+#define BOARD_HAS_IAP  0
+#define BOARD_USING_USB 0
+#define USB_COM_RX_BUF_SIZE       0
+#define USB_COM_TX_BUF_SIZE       0	
+#define BOARD_USING_CAN1 0  
+#define BOARD_USING_SYSTICK 1
+#define BOARD_SYSTICK_FREQ	1000
+#define BOARD_COMMON_SETUP_CLK  1
+#define BOARD_PRIVATE_SETUP_CLK  0
+
+#endif // BOARD_IAP
+
+
 #if BOARD_Trex_V2
 
 //******** config iap 
@@ -126,7 +157,6 @@
 #define IAP_PORT_USB   0
 #define BOARD_USING_USB 0
 #define BOARD_USING_SYSTICK 1
-#define BOARD_PRIVATE_SETUP_CLK  1
 #endif // BOARD_CSWL_CONTROL_BOARD
 
 

@@ -149,7 +149,7 @@
             <RestoreSysVw>1</RestoreSysVw>
           </Target>
           <RunDebugAfterBuild>0</RunDebugAfterBuild>
-          <TargetSelection>1</TargetSelection>
+          <TargetSelection>11</TargetSelection>
           <SimDlls>
             <CpuDll></CpuDll>
             <CpuDllArguments></CpuDllArguments>
@@ -163,7 +163,7 @@
             <PeripheralDll></PeripheralDll>
             <PeripheralDllArguments></PeripheralDllArguments>
             <InitializationFile></InitializationFile>
-            <Driver>BIN\UL2CM3.DLL</Driver>
+            <Driver>STLink\ST-LINKIII-KEIL_SWO.dll</Driver>
           </TargetDlls>
         </DebugOption>
         <Utilities>
@@ -466,6 +466,11 @@
               <FileName>app_CSWL_Control_Board.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\source\app\app_CSWL_Control_Board.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_iap.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\app\app_iap.c</FilePath>
             </File>
           </Files>
         </Group>

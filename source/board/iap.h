@@ -67,5 +67,10 @@ void iap_usb_receive_handler(unsigned char c);
 
 
 
+void iap_init(void);
+void iap_loop(void);
+void iap_jump_to_app_or_deamon(void);
+int is_iap_tag_set(void);
+
 
 #endif //_IAP_H

@@ -25,29 +25,42 @@ typedef struct _PMSG_msg_t{
 	int data_len;
 }PMSG_msg_t;
 
+
 //transmit func : for sending , return the number sent; for reading , return the number read which data in *data, data len in len
 typedef int (*PMSG_transmit_handler_type)( unsigned char *data, int len );
 typedef void (*PMSG_msg_handler_type)( PMSG_msg_t msg);
 
 
+typedef struct _PMSG_t{
+	Uart_t *pUart;
+	PMSG_transmit_handler_type sendbytes_handler;
+	PMSG_transmit_handler_type readbytes_handler;
+	PMSG_msg_handler_type msg_handler;
+	protocol_t decoder;
+	protocol_t encoder;
+	PMSG_msg_t msg;
+}PMSG_t;
+
+
 //the lowest send bytes function
-void _PMSG_send_bytes( unsigned char *data, int len);
+void PMSG_send_bytes( PMSG_t *pmsg, unsigned char *data, int len);
+//the lowest receive bytes function
+int PMSG_receive_bytes( PMSG_t *pmsg, unsigned char *data, int len );
+	
+// check one byte for msg, if get one , fill in pmsg.msg and return 1, else 0
+int PMSG_parse_byte( PMSG_t *pmsg, unsigned char data );
 
-// check one byte for msg, if get one , fill in msg and return 1, else 0
-int PMSG_parse_byte( unsigned char data , PMSG_msg_t *msg );
+// read data  and if get one , fill in pmsg.msg and return 1, else 0
+int PMSG_receive_msg( PMSG_t *pmsg );
 
-
-// read data  and if get one , fill in msg and return 1, else 0
-int PMSG_receive_msg( PMSG_msg_t *msg );
-
-int PMSG_send_msg( unsigned char tag, unsigned char *data, int len);
-
+int PMSG_send_msg( PMSG_t *pmsg, unsigned char tag, unsigned char *data, int len);
 
 // init , can use uart or customed send and receive interface , if no avaliable , set NULL 
-void PMSG_init( Uart_t *uart , PMSG_msg_handler_type msg_func, PMSG_transmit_handler_type sendbytes_func , PMSG_transmit_handler_type  readbytes_func);
+void PMSG_init_uart( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_func );
+void PMSG_init_handler(PMSG_t *pmsg, PMSG_msg_handler_type msg_func, PMSG_transmit_handler_type sendbytes_func , PMSG_transmit_handler_type  readbytes_func);
 
-// user can ignore this even() , you can use PMSG_receive_msg() or PMSG_parse_byte() to get the msg and then deal with them yourselve
-void PMSG_even();
+// call  PMSG_receive_msg() , if 1 , call msg_func();
+void PMSG_even( PMSG_t *pmsg );
 
 
 #endif
@@ -78,6 +91,32 @@ unsigned char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
 
 
 #define PC_TAG_DATA_LED_BRIGHTNESS (PMSG_TAG_DATA|0x1)
+
+
+PMSG_t PC_pmsg;
+
+void PC_msg_handler(PMSG_msg_t msg)
+{
+	int value,res;
+	switch( msg.tag )
+	{
+		case PC_TAG_CMD_SWITCH:
+			if( msg.data_len == 1 ){
+				relay_update_status( msg.data[0] );
+				PC_LOGI("PC_TAG_CMD_SWITCH: status = %02x", relay_status);
+			}else{
+				PC_LOGE("PC_TAG_CMD_SWITCH: unknow data");
+			}
+		break;
+		default:
+			PC_LOGE("PC_TAG_CMD_SWITCH:  unknow data");
+			break;
+	}
+}
+
+PMSG_init_uart( &PC_pmsg, PC_UART, PC_msg_handler );
+PMSG_even( &PC_pmsg );
+
 
 */
 

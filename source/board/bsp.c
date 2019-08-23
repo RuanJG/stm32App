@@ -274,6 +274,12 @@ void bsp_init()
 	
 #if BOARD_PRIVATE_SETUP_CLK
 	app_SystemInit();
+#elif BOARD_COMMON_SETUP_CLK
+	#if (defined STM32F10X_HD) || (defined STM32F10X_MD)
+	bsp_stm32f103_SystemInit();
+	#else
+	#error No Clock setup to define
+	#endif
 #else
 	SystemInit();
 #endif
@@ -307,7 +313,25 @@ void bsp_event()
 
 void bsp_deinit()
 {
-		//NO necessary now
+#if ( BOARD_IAP == 1 ) || ( BOARD_HAS_IAP == 1 )
+	  if( 0 != IAP_PORT_CAN1 )
+			CAN_DeInit(CAN1);
+	
+	#if BOARD_IAP
+	  if( 0 != IAP_PORT_UART )
+			USART_DeInit(IAP_UARTDEV);
+	#endif
+	
+	#if IAP_PORT_USB
+		USB_Deinit();
+	#endif
+#endif
+	
+	GPIO_DeInit(GPIOA);
+	GPIO_DeInit(GPIOB);
+	GPIO_DeInit(GPIOC);
+	
+	systick_deinit();
 }
 
 
