@@ -22,7 +22,11 @@ volatile int debug_en = 1;
 
 
 
+
 PMSG_t PC_pmsg;
+PMSG_t LED_pmsg;
+PMSG_t VMETER_pmsg;
+PMSG_t AMETER_pmsg;
 
 #define PC_TAG_LOGE  (PMSG_TAG_LOG|0x1)
 #define PC_TAG_LOGI  (PMSG_TAG_LOG|0x2)
@@ -49,10 +53,12 @@ Uart_t Uart3;
 Uart_t Uart4;
 Uart_t Uart5;
 
-#define PC_UART &Uart5
+#define PC_UART &Uart1
 #define LED_UART &Uart4
+#define VMETER_UART &Uart2
+#define AMETER_UART &Uart3
 #define IAP_UART &Uart1
-#define CONSOLE_UART &Uart3
+#define CONSOLE_UART &Uart5
 
 
 void Uart_USB_SWJ_init()
@@ -249,6 +255,50 @@ void relay_init()
 
 
 
+Uart_t *uart_pressure_dev = NULL;
+volatile int uart_pressure_test_en = 0;
+void uart_pressure_test_loop()
+{
+	int i,ms;
+	unsigned char buffer[64];
+	unsigned char data[4] = {0x5A,0x55,0xAA,0xA5};
+	unsigned char val;
+	
+	if( uart_pressure_dev == NULL ) return;
+	
+	for( i=0; i< 64; i++ ) buffer[i] = data[i%4];
+	
+	Uart_Clear_Rx(uart_pressure_dev);
+	
+	Uart_Put(uart_pressure_dev,buffer,sizeof(buffer));
+	
+	ms=0;
+	for( i=0; i< 64; i++ )
+	{
+		while(1)
+		{
+			if( 1 == Uart_Get(uart_pressure_dev, &val,1) )
+			{
+				//ms = 0;
+				if( val != buffer[i] ){
+					_LOGE("Uart test Failed\n");
+					systick_delay_ms(10);
+					return;
+				}
+				break;
+			}else{
+				if( ms > 500 ){
+					_LOGE("Time Out\n");
+					systick_delay_ms(10);
+					return;
+				}else{
+					systick_delay_ms(1);
+					ms++;
+				}
+			}
+		}
+	}
+}
 
 
 
@@ -263,8 +313,18 @@ void cmd_even()
 
 	if( buffer[0] == 'd' ){
 		debug_en = debug_en ? 0:1;
+	}else if( buffer[0] == '1' ){
+		uart_pressure_dev = &Uart1;
+		uart_pressure_test_en = 1;
+	}else if( buffer[0] == '2' ){
+		uart_pressure_dev = &Uart2;
+		uart_pressure_test_en = 1;
+	}else if( buffer[0] == '3' ){
+		uart_pressure_dev = &Uart3;
+		uart_pressure_test_en = 1;
 	}else if( buffer[0] == '0' ){
-
+		uart_pressure_dev = NULL;
+		uart_pressure_test_en = 0;
 	}
 }
 
@@ -295,6 +355,23 @@ void PC_msg_handler(PMSG_msg_t msg)
 	
 }
 
+void LED_msg_handler(PMSG_msg_t msg)
+{
+	int value,res;
+	
+	switch( msg.tag )
+	{
+		case PC_TAG_CMD_SWITCH:
+			if( msg.data_len == 1 ){
+			}else{
+				PC_LOGE("PC_TAG_CMD_SWITCH: unknow data");
+			}
+		break;
+		default:
+			PC_LOGE("PC_TAG_CMD_SWITCH:  unknow data");
+			break;
+	}
+}
 
 
 
@@ -304,7 +381,8 @@ void app_init()
 	relay_init();
 	Uart_USB_SWJ_init();
 	PMSG_init_uart( &PC_pmsg, PC_UART, PC_msg_handler );
-	
+	PMSG_init_uart( &LED_pmsg, LED_UART, LED_msg_handler );
+
 	if( SystemCoreClock != 72000000 ){
 		_LOGE("CLK init error");
 		systick_delay_ms(100);
@@ -317,9 +395,12 @@ void app_init()
 
 void app_event()
 {
-
 	PMSG_even( &PC_pmsg );
+	PMSG_even( &LED_pmsg );
+
+	
 	cmd_even();
+	if( uart_pressure_test_en == 1 ) uart_pressure_test_loop();
 }
 
 #endif //BOARD_CSWL_LED_MONITOR
