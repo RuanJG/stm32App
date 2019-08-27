@@ -32,13 +32,20 @@ int PMSG_parse_byte( PMSG_t *pmsg, unsigned char data )
 {
 	if( 1 == protocol_parse( & pmsg->decoder , data ) )
 	{
+		memcpy( pmsg->msg.alldata, pmsg->decoder.data, pmsg->decoder.len);
+		pmsg->msg.alldata_len = pmsg->decoder.len;
+		pmsg->msg.tag = pmsg->msg.alldata[0];
+		pmsg->msg.data = &pmsg->msg.alldata[1];
+		pmsg->msg.data_len = pmsg->decoder.len-1;
+		/*
 		pmsg->msg.tag = pmsg->decoder.data[0];
 		if( pmsg->decoder.len > 1 ){
 			pmsg->msg.data_len = pmsg->decoder.len-1;
-			memcpy( pmsg->msg.data, pmsg->decoder.data+1, pmsg->msg.data_len);
+			memcpy( pmsg->msg.data, pmsg->decoder.data+1, pmsg->msg.data_len);	
 		}else{
 			pmsg->msg.data_len = 0;
 		}
+		*/
 		return 1;
 	}
 	return 0;
@@ -67,6 +74,13 @@ int PMSG_receive_msg( PMSG_t *pmsg )
 	return 0;
 }
 
+int PMSG_send_msg_no_Tag( PMSG_t *pmsg, unsigned char *data, int len)
+{
+	if( 0 == protocol_encode( &pmsg->decoder, data, len) ) return 0;
+	PMSG_send_bytes( pmsg, pmsg->decoder.data, pmsg->decoder.len );
+	return 1;
+}
+
 int PMSG_send_msg( PMSG_t *pmsg, unsigned char tag, unsigned char *data, int len)
 {
 	unsigned char packget[PROTOCOL_MAX_PACKET_SIZE];
@@ -75,10 +89,11 @@ int PMSG_send_msg( PMSG_t *pmsg, unsigned char tag, unsigned char *data, int len
 	
 	packget[0] = tag;
 	memcpy( &packget[1] , data, len);
-	if( 0 == protocol_encode( &pmsg->decoder, packget, len+1) ) return 0;
-	PMSG_send_bytes( pmsg, pmsg->decoder.data, pmsg->decoder.len );
-	return 1;
+
+	return PMSG_send_msg_no_Tag( pmsg, packget, len+1 );
 }
+
+
 
 
 // init , can use uart or customed send and receive interface , if no avaliable , set NULL 

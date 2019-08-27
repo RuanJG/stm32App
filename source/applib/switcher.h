@@ -26,7 +26,7 @@ struct switcher {
 
 
 
-void switcher_init(struct switcher* sw,  int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   );
+void switcher_init(struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , GPIOMode_TypeDef inputmode, SwitchHandler press_handler , SwitchHandler release_handler   );
 void switcher_interval_check(volatile  struct switcher *sw );
 
 
@@ -39,10 +39,23 @@ void switcher_interval_check(volatile  struct switcher *sw );
 
 /* ********  usage
 
-#define SW_INTERVAL_COUNT  10  // 10ms检查一次GPIO口， 10次就是100ms, 用作过滤
+
+#define SW_INTERVAL_COUNT  10  // SW_INTERVAL_MS 检查一次GPIO口， SW_INTERVAL_COUNT次后发出按键事件, 用作过滤
 #define SW_INTERVAL_MS 5
 systick_time_t sw_timer;
 volatile struct switcher startButton;
+volatile int startButton_triggered =0 ;
+
+
+int is_startButton_triggered()
+{
+	if( startButton_triggered == 1 ){
+		startButton_triggered = 0;
+		return 1;
+	}else{
+		return 0;
+	}
+}
 
 void switch_key_press_handler()
 {
@@ -51,12 +64,12 @@ void switch_key_press_handler()
 
 void switch_key_release_handler()
 {
-
+	startButton_triggered = 1;
 }
 
 void switch_init()
 {
-	switcher_init( &startButton, SW_INTERVAL_COUNT, 1 , 0 , GPIOB, GPIO_Pin_6, switch_key_press_handler , switch_key_release_handler);
+	switcher_init( &startButton, SW_INTERVAL_COUNT, 1 , 0 , GPIOB, GPIO_Pin_6, GPIO_Mode_IN_FLOATING, NULL , switch_key_release_handler);
 
 	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
 }
@@ -68,6 +81,7 @@ void switch_even()
 	switcher_interval_check( &startButton );
 
 }
+
 
 
 */

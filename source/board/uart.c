@@ -117,6 +117,28 @@ void Uart_DeInit (Uart_t *uart)
 	USART_Cmd(uart->uartDev, DISABLE);	
 }
 
+void Uart_reset(Uart_t *uart,uint32_t USART_BaudRate, uint16_t USART_WordLength, uint16_t USART_StopBits, uint16_t USART_Parity)
+{
+	USART_InitTypeDef USART_InitStructure;
+	
+	USART_ITConfig(uart->uartDev, USART_IT_RXNE, DISABLE);
+	USART_ITConfig(uart->uartDev, USART_IT_TXE, DISABLE);
+	USART_Cmd(uart->uartDev, DISABLE);
+
+	USART_StructInit (&USART_InitStructure);
+	USART_InitStructure.USART_BaudRate = USART_BaudRate;
+	USART_InitStructure.USART_WordLength = USART_WordLength;
+	USART_InitStructure.USART_StopBits = USART_StopBits;
+	USART_InitStructure.USART_Parity = USART_Parity;
+	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;  
+	USART_Init(uart->uartDev, &USART_InitStructure); 
+	
+	USART_ITConfig(uart->uartDev, USART_IT_RXNE, ENABLE);
+	USART_ITConfig(uart->uartDev, USART_IT_TXE, ENABLE);
+	USART_Cmd(uart->uartDev, ENABLE);	 
+}
+
 void _uart_irq_function(Uart_t *uart)
 {
 	unsigned char c,tc;

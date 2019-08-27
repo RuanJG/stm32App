@@ -2,7 +2,7 @@
 
 #include "switcher.h"
 
-void switcher_init(struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , SwitchHandler press_handler , SwitchHandler release_handler   )
+void switcher_init(struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , GPIOMode_TypeDef inputmode, SwitchHandler press_handler , SwitchHandler release_handler   )
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
@@ -19,7 +19,7 @@ void switcher_init(struct switcher* sw, int maxcount, int default_level, int pre
 	
 	GPIO_InitStructure.GPIO_Pin = sw->GPIO_Pin;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Mode = default_level==0? GPIO_Mode_IPD :GPIO_Mode_IPU;//:GPIO_Mode_IN_FLOATING) ;
+	GPIO_InitStructure.GPIO_Mode = inputmode ;
 	GPIO_Init(sw->GPIOx, &GPIO_InitStructure);
 	
 	

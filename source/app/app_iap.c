@@ -525,11 +525,16 @@ void can1_receive_event(CanRxMsg *msg)
 
 void iap_init()
 {
+	if( 0 == is_iap_tag_set() ){
+		clean_iap_tag();
+		iap_jump_to_app();
+	}
+	
 	
 	protocol_init(&encoder);
 	protocol_init(&decoder);
 	
-	systick_init_timer( &timeout_timer, 10);
+	//systick_init_timer( &timeout_timer, 10);
 	
 	iap_inited_flag = 1;
 	
@@ -549,7 +554,7 @@ void iap_loop()
 		iap_parase(uartRxBuffer[i]);
 	
 	//if( count > 0 ) USB_TxWrite(uartRxBuffer, count);
-	
+	/*
 	if( systick_check_timer( &timeout_timer ) == 1)
 	{
 		if( iap_lost_ms  >= _iap_lost_ms_max )
@@ -559,6 +564,7 @@ void iap_loop()
 			iap_lost_ms += 10;
 		}
 	}	
+	*/
 }
 
 

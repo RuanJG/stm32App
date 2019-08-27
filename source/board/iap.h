@@ -63,7 +63,7 @@ void iap_init_in_can1(void);
 void iap_init_in_uart(Uart_t *uart);
 void iap_init_in_usb(void);
 void iap_usb_receive_handler(unsigned char c);
-
+void iap_jump(void);
 
 
 

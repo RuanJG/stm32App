@@ -12,6 +12,7 @@
 //protocol msg packget  [tag][data]
 // tag: high 4 bits is fixed for packget type
 //      low 4 bits is for custom
+#define PMSG_TAG_IAP		0x00
 #define PMSG_TAG_ACK		0x10
 #define PMSG_TAG_LOG		0x20
 #define PMSG_TAG_DATA		0x30
@@ -19,10 +20,32 @@
 #define IS_PMSG_TAG(T,V) (( V & 0xf0 ) == T)
 
 
+//IAP ID 
+#define PMSG_TAG_IAP_START_ID 	(PMSG_TAG_IAP|0x1) //[id-start]data{[0]}
+#define PMSG_TAG_IAP_ACK_ID 		(PMSG_TAG_IAP|0x2) //[id-ack]data{[ACK_OK/ACK_FALSE/ACK/RESTART][error code]}
+#define PMSG_TAG_IAP_DATA_ID 	(PMSG_TAG_IAP|0x3) //[id-data] data{[seq][]...[]}
+#define PMSG_TAG_IAP_END_ID 		(PMSG_TAG_IAP|0x4) //[id-end] data{[stop/jump]}
+//data
+#define PMSG_IAP_ACK_OK 1
+#define PMSG_IAP_ACK_FALSE 2
+#define PMSG_IAP_ACK_RESTART 3
+#define PMSG_IAP_END_JUMP 1
+#define PMSG_IAP_END_STOP 2
+#define PMSG_IAP_MAX_DATA_SEQ 200  // new_seq = (last_seq+1)% PACKGET_MAX_DATA_SEQ
+// ack error code
+#define PMSG_IAP_ACK_FALSE_PROGRAM_ERROR 21 // the send data process stop
+#define PMSG_IAP_ACK_FALSE_ERASE_ERROR 22 // the send data process stop
+#define PMSG_IAP_ACK_FALSE_SEQ_FALSE 23 // the send data process will restart
+// if has ack false , the flash process shuld be restart
+
+
+
 typedef struct _PMSG_msg_t{
 	unsigned char tag;
-	unsigned char data[PROTOCOL_MAX_PACKET_SIZE];
+	unsigned char* data;
 	int data_len;
+	unsigned char alldata[PROTOCOL_MAX_PACKET_SIZE];
+	int alldata_len;
 }PMSG_msg_t;
 
 
@@ -54,6 +77,7 @@ int PMSG_parse_byte( PMSG_t *pmsg, unsigned char data );
 int PMSG_receive_msg( PMSG_t *pmsg );
 
 int PMSG_send_msg( PMSG_t *pmsg, unsigned char tag, unsigned char *data, int len);
+int PMSG_send_msg_no_Tag( PMSG_t *pmsg, unsigned char *data, int len);
 
 // init , can use uart or customed send and receive interface , if no avaliable , set NULL 
 void PMSG_init_uart( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_func );

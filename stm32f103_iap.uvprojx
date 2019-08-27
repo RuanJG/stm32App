@@ -507,6 +507,26 @@
               <FileType>5</FileType>
               <FilePath>.\source\applib\Pmsg.h</FilePath>
             </File>
+            <File>
+              <FileName>Victor8165Meter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\applib\Victor8165Meter.c</FilePath>
+            </File>
+            <File>
+              <FileName>Victor8165Meter.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\applib\Victor8165Meter.h</FilePath>
+            </File>
+            <File>
+              <FileName>miniMeter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\source\applib\miniMeter.c</FilePath>
+            </File>
+            <File>
+              <FileName>miniMeter.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\source\applib\miniMeter.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

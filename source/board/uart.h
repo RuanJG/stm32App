@@ -31,5 +31,6 @@ void Uart_Put(Uart_t *uart,unsigned char *data, int count);
 void Uart_Clear_Rx( Uart_t *uart );
 void Uart_Clear_Tx( Uart_t *uart );
 void Uart_Put_Sync(Uart_t *uart,unsigned char *data, int count);
+void Uart_reset(Uart_t *uart,uint32_t USART_BaudRate, uint16_t USART_WordLength, uint16_t USART_StopBits, uint16_t USART_Parity);
 
 #endif
