@@ -159,7 +159,7 @@ void Uart_USB_SWJ_init()
 #define CAPTURE_IDEL			0
 #define CAPTURE_STARTED		1
 #define CAPTURE_FINISH		2
-volatile unsigned int capture_time_ms	= 5 ;  // [ 0.1ms, 600ms ]
+volatile unsigned int capture_time_ms	= 10 ;  // [ 0.1ms, 600ms ]
 volatile unsigned int capture_1to6_tickers = 0;
 volatile unsigned int capture_1to6_periods = 0;
 
@@ -367,7 +367,7 @@ volatile unsigned char led_current_id;
 #define LED_STATUS_FREQ_20		0x10
 #define LED_STATUS_FREQ_2			0x20
 #define LED_STATUS_FREQ_OFF			0x00
-#define LED_STATUS_LED_ON				0x00
+#define LED_STATUS_LED_ON				0x01 //0x00
 #define LED_STATUS_LED_OFF				0x01
 
 #define LED_STATUS_OK  1

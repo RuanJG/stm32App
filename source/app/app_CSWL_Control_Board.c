@@ -51,6 +51,8 @@ char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
 // PC->Control
 #define PC_TAG_CMD_SWITCH  (PMSG_TAG_CMD | 0x07 ) // data[0] = SWITCH status   4701 (shave) 4702 (RESISTOR) 4704 (OUTPUT_METER)  4708 (VDD_METER) 4710 (POWER) 4720 (SIGNAL air )
 #define PC_TAG_CMD_UART_TEST  (PMSG_TAG_CMD | 0x08 ) // data[0] = Uart ID , 0 = stop
+#define PC_TAG_CMD_AMETER_READ  (PMSG_TAG_CMD | 0x09 ) //data[0] = read n times and send the mean data , 0 stop 
+#define PC_TAG_CMD_VMETER_READ  (PMSG_TAG_CMD | 0x0A ) //data[0] = read n times and send the mean data , 0 stop 
 
 
 //LED to PC
@@ -59,7 +61,7 @@ char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
 #define PC_TAG_DATA_VMETER (PMSG_TAG_DATA|0x2)
 #define PC_TAG_DATA_AMETER (PMSG_TAG_DATA|0x3)
 #define PC_TAG_DATA_BUTTON (PMSG_TAG_DATA|0x4) // startbutton data[0] = 1 pressed 
-
+#define PC_TAG_DATA_QRCODE (PMSG_TAG_DATA|0x5)
 
 
 Uart_t Uart1;
@@ -117,7 +119,7 @@ void Uart_USB_SWJ_init()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
 	GPIO_Init(GPIOA, &GPIO_InitStructure); 
 	
-	Uart_Configuration (&Uart2, USART2, 115200, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+	Uart_Configuration (&Uart2, USART2, 9600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 #endif
 
 #if 1
@@ -174,7 +176,7 @@ void Uart_USB_SWJ_init()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
 	GPIO_Init(GPIOD, &GPIO_InitStructure); 
 	
-	Uart_Configuration (&Uart5, UART5, 115200, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+	Uart_Configuration (&Uart5, UART5, 9600, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
 	
 #endif
 	
@@ -210,9 +212,9 @@ void Uart_USB_SWJ_init()
 #define RELAY_OFF 1
 
 #define RELAY_OUTPUT_TO_SHAVE(X) GPIO_WriteBit( GPIOC, GPIO_Pin_5 , X==1? RELAY_ON:RELAY_OFF)
-#define RELAY_OUTPUT_TO_METER(X) GPIO_WriteBit( GPIOC, GPIO_Pin_4 , X==1? RELAY_ON:RELAY_OFF)
+#define RELAY_OUTPUT_TO_METER(X) GPIO_WriteBit( GPIOC, GPIO_Pin_7 , X==1? RELAY_ON:RELAY_OFF)
 #define RELAY_OUTPUT_TO_RESISTOR(X) GPIO_WriteBit( GPIOC, GPIO_Pin_6 , X==1? RELAY_ON:RELAY_OFF)
-#define RELAY_VDD_TO_METER(X) GPIO_WriteBit( GPIOC, GPIO_Pin_7 , X==1? RELAY_ON:RELAY_OFF)
+#define RELAY_VDD_TO_METER(X) GPIO_WriteBit( GPIOC, GPIO_Pin_4 , X==1? RELAY_ON:RELAY_OFF)
 #define RELAY_POWER_TO_CSWL(X) GPIO_WriteBit( GPIOC, GPIO_Pin_8 , X==1? RELAY_ON:RELAY_OFF)
 
 #define SIGNAL_ON 1
@@ -221,8 +223,8 @@ void Uart_USB_SWJ_init()
 
 #define INDEX_SHAVE  0x1
 #define INDEX_RESISTOR 0x2
-#define INDEX_OUTPUT_METER 0x4
-#define INDEX_VDD_METER 0x8
+#define INDEX_OUTPUT_METER 0x8
+#define INDEX_VDD_METER 0x4
 #define INDEX_POWER  0x10
 #define INDEX_SIGNAL 0x20
 
@@ -354,6 +356,191 @@ void uart_pressure_test_loop()
 }
 
 
+volatile int Ameter_en_cnt;
+volatile float Ameter_val;
+volatile int  Ameter_val_count;
+
+void Ameter_init()
+{
+	miniMeter_init( &Ameter ,AMETER_UART , 0x00);
+	Ameter_en_cnt = 0;
+	Ameter_val_count = 0;
+}
+
+int Ameter_start( int cnt )
+{
+	Ameter_en_cnt = cnt;
+	
+	if( Ameter_en_cnt == 0 ){
+		miniMeter_stop(&Ameter);
+		return 1;
+	}else{
+		if( 1 == miniMeter_start(&Ameter) ){
+			Ameter_val_count = 0;
+			Ameter_val = 0;
+			return 1;
+		}else{
+			Ameter_en_cnt = 0;
+			return 0;
+		}
+	}
+}
+
+void Ameter_even()
+{
+	float value;
+	unsigned char data[4];
+	
+	if( Ameter_en_cnt == 0 ) return;
+	
+	if( 1== miniMeter_check( &Ameter, &value) ){
+		Ameter_val_count++;
+		Ameter_val += value;
+		if( Ameter_val_count >= Ameter_en_cnt ){
+			Ameter_val /= Ameter_val_count;
+			memcpy( data, (unsigned char*) &Ameter_val , 4 );
+			if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_AMETER, data , sizeof(data) ) ){
+				PC_LOGE("Ameter_even: send data to PC error");
+			}
+			Ameter_val_count = 0;
+			Ameter_val = 0;
+		}
+	}
+}
+
+
+
+
+#define VICTOR8165_BUFFSIZE 31
+
+Uart_t *victor8165_uart;
+volatile int victor8165_step;
+volatile int victor8165_received_result;
+volatile int victor8165_buffer_index;
+volatile int victor8165_updated;
+volatile float victor8165_value;
+volatile int victor8165_en;
+char victor8165_buffer[VICTOR8165_BUFFSIZE+1];
+systick_time_t victor8165_timer;
+
+
+
+void victor8165_send_cmd( char* cmd)
+{
+	Uart_Put( victor8165_uart, (unsigned char *)cmd,  strlen(cmd) );
+}
+
+int victor8165_check( float *value)
+{
+	if( victor8165_updated == 1 ){
+		*value = victor8165_value;
+		victor8165_updated = 0;
+		return 1;
+	}
+	return 0;
+}
+
+void victor8165_start()
+{
+	victor8165_step = 0;
+	victor8165_buffer_index = 0;
+	victor8165_received_result = 0;
+	victor8165_updated= 0;
+	victor8165_en =1;
+}
+
+void victor8165_stop()
+{
+	victor8165_updated= 0;
+	victor8165_en =0;
+}
+
+void victor8165_init( Uart_t *uart )
+{
+	victor8165_uart = uart;
+	victor8165_step = 0;
+	victor8165_buffer_index = 0;
+	victor8165_received_result = 0;
+	victor8165_updated= 0;
+	victor8165_en = 0;
+}
+
+void victor8165_even()
+{
+	int i,len;
+	unsigned char data[4];
+	
+	for( i=0; i< VICTOR8165_BUFFSIZE; i++ ){
+		if( 1== Uart_Get( victor8165_uart, (victor8165_buffer + victor8165_buffer_index) , 1) ){
+			if( victor8165_buffer[victor8165_buffer_index] == 0x0A ){
+				victor8165_received_result = victor8165_buffer_index+1;
+				victor8165_buffer[victor8165_received_result] = 0; // set string end tag
+				victor8165_buffer_index = 0;
+				break;
+			}else{
+				victor8165_buffer_index ++;
+				if( victor8165_buffer_index >= VICTOR8165_BUFFSIZE ) victor8165_buffer_index = 0;
+			}
+		}else{
+			break;
+		}
+	}
+	
+	if( victor8165_en == 0 ) return; 
+	
+	switch (victor8165_step)
+	{
+		case 0: victor8165_send_cmd("ADC\n"); victor8165_step++; systick_init_timer(&victor8165_timer, 100); break;
+		case 1: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("RATE M\n");victor8165_step++;}break;
+		case 2: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("RANGE 3\n");victor8165_step++;}break;
+		case 3: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("FUNC1?\n");victor8165_step++;systick_init_timer(&victor8165_timer, 300);}break;
+		case 4: 
+				if( victor8165_received_result > 0 )
+				{
+             victor8165_step++; victor8165_received_result=0;
+						if( victor8165_received_result == strlen("VDC\n") && 0 == strncmp("VDC\n",(char*)victor8165_buffer , victor8165_received_result) ){
+							victor8165_step++; 
+							victor8165_received_result=0;
+						}
+				}else{ 
+				     if(systick_check_timer(&victor8165_timer)){
+							 victor8165_step = 0;
+							 PC_LOGE("victor8165_even: Init timeout");
+						 }  
+				}; 
+	  break;	
+		case 5: systick_init_timer(&victor8165_timer, 300);victor8165_send_cmd("MEAS1\n");victor8165_step++;break;
+		case 6:
+			if( victor8165_received_result > 2 ){
+				sscanf((const char*)victor8165_buffer , "%e;\n",  &victor8165_value);
+				victor8165_updated = 1;
+				victor8165_send_cmd("MEAS1\n");
+				
+				memcpy( data, (unsigned char*) &victor8165_value , 4 );
+				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
+					PC_LOGE("victor8165_even: send data to PC error");
+				}
+				
+			}else{
+				if(systick_check_timer(&victor8165_timer)){
+					PC_LOGE("victor8165_even: MEAS1 cmd timeout");
+					victor8165_send_cmd("MEAS1\n");
+				}
+			}
+		break;
+			
+		default:
+			PC_LOGE("victor8165_even: Something error!");
+		break;
+		
+	}
+}
+
+
+
+
+
+
 
 void cmd_even()
 {
@@ -451,6 +638,28 @@ void PC_msg_handler(PMSG_msg_t msg)
 			}
 		break;
 			
+		case PC_TAG_CMD_AMETER_READ:
+			if( msg.data_len == 1 ){
+				if( 0 == Ameter_start( msg.data[0] ) ){
+					PC_LOGE("PC_TAG_CMD_AMETER_READ: start meter failed");
+				}
+			}else{
+				PC_LOGE("PC_TAG_CMD_AMETER_READ: data error");
+			}
+		break;
+			
+		case PC_TAG_CMD_VMETER_READ:
+			if( msg.data_len == 1 ){
+				if( msg.data[0] == 0 ){
+					victor8165_stop();
+				}else{
+					victor8165_start();
+				}
+			}else{
+				PC_LOGE("PC_TAG_CMD_VMETER_READ: data error");
+			}
+		break;
+			
 		default:
 			PC_LOGE("PC_PMSG:  unknow data");
 			break;
@@ -478,12 +687,14 @@ void app_init()
 	PMSG_init_uart( &PC_pmsg, PC_UART, PC_msg_handler );
 	PMSG_init_uart( &LED_pmsg, LED_UART, LED_msg_handler );
 	switch_init();
-	miniMeter_init( &Ameter ,AMETER_UART , 0x00);
+	Ameter_init();
+	victor8165_init( VMETER_UART );
+	
 
 	
 	if( SystemCoreClock != 72000000 ){
 		_LOGE("CLK init error");
-		systick_delay_ms(100);
+		systick_delay_ms(1000);
 		while(1);
 	}
 	
@@ -504,6 +715,9 @@ void app_event()
 		PMSG_even( &PC_pmsg );
 		PMSG_even( &LED_pmsg );
 	}
+	
+	victor8165_even();
+	Ameter_even();
 }
 
 #endif //BOARD_CSWL_LED_MONITOR

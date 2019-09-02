@@ -134,7 +134,7 @@ int miniMeter_start(miniMeter_t *meter)
 		Uart_Put(meter->uartdev, packget, sizeof( packget) );
 		systick_delay_ms(300);
 		if( 1 == miniMeter_check( meter, &A) ){
-			meter->state = 1;
+			meter->state = METER_STATE_STARTED;
 			return 1;
 		}
 	}

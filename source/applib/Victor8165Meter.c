@@ -2,6 +2,7 @@
 
 #include "systick.h"
 
+
 #if 0
 Uart_t *victor8165Uart;
 
@@ -175,6 +176,16 @@ int service_getCurrent( float *A)
 	
 	return 1;
 }
+
+
+
+
 #endif
+
+
+
+
+
+
 
 
