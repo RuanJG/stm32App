@@ -490,18 +490,19 @@ void victor8165_even()
 	
 	switch (victor8165_step)
 	{
-		case 0: victor8165_send_cmd("ADC\n"); victor8165_step++; systick_init_timer(&victor8165_timer, 100); break;
+		case 0: victor8165_send_cmd("VDC\n"); victor8165_step++; systick_init_timer(&victor8165_timer, 200); break;
 		case 1: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("RATE M\n");victor8165_step++;}break;
 		case 2: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("RANGE 3\n");victor8165_step++;}break;
 		case 3: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("FUNC1?\n");victor8165_step++;systick_init_timer(&victor8165_timer, 300);}break;
 		case 4: 
 				if( victor8165_received_result > 0 )
 				{
-             victor8165_step++; victor8165_received_result=0;
 						if( victor8165_received_result == strlen("VDC\n") && 0 == strncmp("VDC\n",(char*)victor8165_buffer , victor8165_received_result) ){
 							victor8165_step++; 
-							victor8165_received_result=0;
+						}else{
+							victor8165_step = 0;
 						}
+						victor8165_received_result=0;
 				}else{ 
 				     if(systick_check_timer(&victor8165_timer)){
 							 victor8165_step = 0;
@@ -509,22 +510,24 @@ void victor8165_even()
 						 }  
 				}; 
 	  break;	
-		case 5: systick_init_timer(&victor8165_timer, 300);victor8165_send_cmd("MEAS1\n");victor8165_step++;break;
+		case 5: systick_init_timer(&victor8165_timer, 200);victor8165_send_cmd("MEAS1?\n");victor8165_step++;break;
 		case 6:
 			if( victor8165_received_result > 2 ){
 				sscanf((const char*)victor8165_buffer , "%e;\n",  &victor8165_value);
 				victor8165_updated = 1;
-				victor8165_send_cmd("MEAS1\n");
-				
 				memcpy( data, (unsigned char*) &victor8165_value , 4 );
 				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
 					PC_LOGE("victor8165_even: send data to PC error");
 				}
-				
+				victor8165_received_result = 0;
+				//no delay
+				//victor8165_send_cmd("MEAS1?\n");
 			}else{
 				if(systick_check_timer(&victor8165_timer)){
-					PC_LOGE("victor8165_even: MEAS1 cmd timeout");
-					victor8165_send_cmd("MEAS1\n");
+					if( victor8165_updated == 0) PC_LOGE("victor8165_even: MEAS1 cmd timeout");
+					//delay 
+					victor8165_updated = 0;
+					victor8165_send_cmd("MEAS1?\n");
 				}
 			}
 		break;
