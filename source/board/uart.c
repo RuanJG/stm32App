@@ -80,7 +80,9 @@ void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_Ba
 		NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
 		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_UART3_IRQ_PREPRIORITY;
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_UART3_IRQ_SUBPRIORITY;
-	}else if( uartDev == UART4 ){
+	}
+#ifdef STM32F10X_HD	
+	else if( uartDev == UART4 ){
 		uart4_p = uart;
 		NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn;
 		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_UART4_IRQ_PREPRIORITY;
@@ -91,6 +93,7 @@ void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_Ba
 		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_UART5_IRQ_PREPRIORITY;
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_UART5_IRQ_SUBPRIORITY;
 	}
+#endif
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_Init(&NVIC_InitStructure);	
 	
