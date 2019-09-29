@@ -154,6 +154,9 @@ void USB_Interrupts_Config(void)
 {
   NVIC_InitTypeDef NVIC_InitStructure; 
 
+#ifdef STM32F10X_LD_VL
+	return;
+#else
   NVIC_InitStructure.NVIC_IRQChannel = USB_LP_CAN1_RX0_IRQn;
   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_CAN1_IRQ_PREPRIORITY;
   NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_CAN1_IRQ_SUBPRIORITY;
@@ -165,6 +168,7 @@ void USB_Interrupts_Config(void)
   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_CAN1_IRQ_PREPRIORITY;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
   NVIC_Init(&NVIC_InitStructure);
+#endif
 }
 
 /*******************************************************************************
@@ -225,6 +229,8 @@ void USB_Deinit(void)
 	EXTI_InitTypeDef EXTI_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
 	
+#ifdef STM32F10X_LD_VL
+#else
   EXTI_ClearITPendingBit(EXTI_Line18);
   EXTI_InitStructure.EXTI_Line = EXTI_Line18; 
   EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
@@ -248,6 +254,8 @@ void USB_Deinit(void)
 	PowerOff();
 	systick_delay_us(5000);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USB, DISABLE);
+#endif
+
 }
 
 

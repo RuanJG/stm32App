@@ -63,6 +63,9 @@ u8 Can1_Configuration_mask(u8 FilterNumber, u16 ID, uint32_t id_type,  u16 ID_Ma
 	CAN_FilterInitStructure.CAN_FilterActivation=ENABLE;
 	CAN_FilterInit(&CAN_FilterInitStructure);
 	
+#if defined (STM32F10X_LD_VL) 
+	
+#else
 	// irq config 
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = CUSTOM_CAN1_IRQ_PREPRIORITY;
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = CUSTOM_CAN1_IRQ_SUBPRIORITY;
@@ -85,7 +88,8 @@ u8 Can1_Configuration_mask(u8 FilterNumber, u16 ID, uint32_t id_type,  u16 ID_Ma
 	
 	//CAN1->TSR |= CAN_TSR_RQCP0|CAN_TSR_RQCP1|CAN_TSR_RQCP2;
 	//CAN_ITConfig (CAN1, CAN_IT_TME, ENABLE);
-  
+ #endif
+ 
 	return Init_state;
 }
 

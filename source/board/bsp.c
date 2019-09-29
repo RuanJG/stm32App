@@ -10,10 +10,44 @@
 
 
 
-void bsp_stm32f103_SetSysClock(void)
+void bsp_stm32f10x_hsi()
+{
+		return ;
+	
+		//using HSI to PLL to 48M, when SystemCoreClockUpdate() , check the SystemCoreClock != 72000000 , will know whether it is failed.
+		RCC_DeInit();
+		RCC_HSICmd(ENABLE);
+		while(RCC_GetFlagStatus(RCC_FLAG_HSIRDY) == RESET){};
+		
+		//加上这两句才能到64M
+    FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);  
+    FLASH_SetLatency(FLASH_Latency_2);  
+		
+		RCC_HCLKConfig(RCC_SYSCLK_Div1);     
+    RCC_PCLK1Config(RCC_HCLK_Div2);  
+    RCC_PCLK2Config(RCC_HCLK_Div1);  
+		RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5);
+		RCC_ADCCLKConfig(RCC_PCLK2_Div4);
+		
+		//8M to PLL need to div2 , and then go to the PLL mul , which can be adjust to be more higher freq.
+		RCC_PLLConfig(RCC_PLLSource_HSI_Div2, RCC_PLLMul_12);//4*12 = 48M , can use usb.
+		RCC_PLLCmd(ENABLE);
+		while(RCC_GetFlagStatus(RCC_FLAG_PLLRDY) == RESET){};
+			
+		RCC_SYSCLKConfig(RCC_SYSCLKSource_PLLCLK);
+		while(RCC_GetSYSCLKSource() != 0x08);
+}
+
+void bsp_stm32f10x_SetSysClock(void)
 {
   __IO uint32_t StartUpCounter = 0, HSEStatus = 0;
   
+	
+	if( HSE_VALUE == 0 ){
+		bsp_stm32f10x_hsi();
+		return ;
+	}
+	
   /* SYSCLK, HCLK, PCLK2 and PCLK1 configuration ---------------------------*/    
   /* Enable HSE */    
   RCC->CR |= ((uint32_t)RCC_CR_HSEON);
@@ -93,6 +127,12 @@ void bsp_stm32f103_SetSysClock(void)
 			/* PLL configuration: PLLCLK = 16M/2 * 9 = 72 MHz */ 
 			RCC->CFGR |= (uint32_t)(RCC_CFGR_PLLXTPRE_PREDIV1_Div2 | RCC_CFGR_PLLSRC_PREDIV1 | RCC_CFGR_PLLMULL9);
 		}
+		
+#elif defined (STM32F10X_LD_VL) || defined (STM32F10X_MD_VL) || defined (STM32F10X_HD_VL)
+    /*  PLL configuration:  = (HSE / 2) * 6 = 24 MHz */
+    RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLXTPRE | RCC_CFGR_PLLMULL));
+    RCC->CFGR |= (uint32_t)(RCC_CFGR_PLLSRC_PREDIV1 | RCC_CFGR_PLLXTPRE_PREDIV1_Div2 | RCC_CFGR_PLLMULL6);
+		
 #else    
     //clear bits
     RCC->CFGR &= (uint32_t)((uint32_t)~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLXTPRE | RCC_CFGR_PLLMULL));
@@ -126,35 +166,14 @@ void bsp_stm32f103_SetSysClock(void)
   }
   else
   { 
-		//using HSI to PLL to 48M, when SystemCoreClockUpdate() , check the SystemCoreClock != 72000000 , will know whether it is failed.
-		RCC_DeInit();
-		RCC_HSICmd(ENABLE);
-		while(RCC_GetFlagStatus(RCC_FLAG_HSIRDY) == RESET){};
-		
-		//加上这两句才能到64M
-    FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);  
-    FLASH_SetLatency(FLASH_Latency_2);  
-		
-		RCC_HCLKConfig(RCC_SYSCLK_Div1);     
-    RCC_PCLK1Config(RCC_HCLK_Div2);  
-    RCC_PCLK2Config(RCC_HCLK_Div1);  
-		RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5);
-		RCC_ADCCLKConfig(RCC_PCLK2_Div4);
-		
-		//8M to PLL need to div8 , and then go to the PLL mul , which can be adjust to be more higher freq.
-		RCC_PLLConfig(RCC_PLLSource_HSI_Div2, RCC_PLLMul_12);//4*12 = 48M , can use usb.
-		RCC_PLLCmd(ENABLE);
-		while(RCC_GetFlagStatus(RCC_FLAG_PLLRDY) == RESET){};
-			
-		RCC_SYSCLKConfig(RCC_SYSCLKSource_PLLCLK);
-		while(RCC_GetSYSCLKSource() != 0x08);
+		bsp_stm32f10x_hsi();
   }
 }
 
 
 
 
-void bsp_stm32f103_SystemInit (void)
+void bsp_stm32f10x_SystemInit (void)
 {
   /* Reset the RCC clock configuration to the default reset state(for debug purpose) */
   /* Set HSION bit */
@@ -204,8 +223,8 @@ void bsp_stm32f103_SystemInit (void)
 
   /* Configure the System clock frequency, HCLK, PCLK2 and PCLK1 prescalers */
   /* Configure the Flash Latency cycles and enable prefetch buffer */
-  bsp_stm32f103_SetSysClock();
-	
+
+  bsp_stm32f10x_SetSysClock();
 	SystemCoreClockUpdate();
 
 
@@ -228,6 +247,9 @@ void bsp_stm32f103_SystemInit (void)
 
 Uart_t *pConsoleUart = CONSOLE_NONE_TYPE;
 volatile int console_type=0 ;
+volatile int console_cmd_index;
+static unsigned char * console_cmd_buffer;
+int console_cmd_buffer_size;
 
 void console_init(int type, void * pridata )
 {
@@ -239,8 +261,66 @@ void console_init(int type, void * pridata )
 		console_type |= type;
 		pConsoleUart = (Uart_t*) pridata;
 	}
+	
+	console_cmd_index = -1;
+	console_cmd_buffer = NULL;
+	console_cmd_buffer_size = 0;
 }
 
+int console_cmd_config( unsigned char *buffer , int size )
+{
+	console_cmd_index = -1;
+	console_cmd_buffer = buffer;
+	console_cmd_buffer_size = size;
+}
+
+int console_cmd_parse( unsigned char data )
+{
+	int len;
+	
+	if( console_cmd_index >= console_cmd_buffer_size )  console_cmd_index = -1;
+	
+	// get start
+	if( console_cmd_index == -1 ){
+		if( data != '/' ) return 0;
+		console_cmd_index = 0;
+		return 0;
+	}
+	
+	//get end
+	if( data == '/' ){
+		len = console_cmd_index;
+		console_cmd_index = -1;
+		return len;
+	}else{
+		console_cmd_buffer[console_cmd_index++] = data;
+		return 0;
+	}
+
+}
+
+
+// return cmd length
+int console_cmd_check()
+{
+	unsigned char data;
+	
+	if( console_cmd_buffer_size <= 0 ) return 0;
+	
+	if( (console_type & CONSOLE_UART_TYPE) != 0   &&   pConsoleUart != NULL ){
+		if( 1 == Uart_Get(pConsoleUart,&data,1) ){
+			return console_cmd_parse( data ) ;
+		}
+	}else{
+		if( (console_type & CONSOLE_USB_TYPE) != 0){
+			if( 1 == USB_RxRead( &data, 1 ) ){
+				return console_cmd_parse( data );
+			}
+		}
+	}
+}
+
+#if !BOARD_SPECIAL_FPUT
 int fputc(int ch, FILE *f)
 {
 	//TODO lock ?
@@ -254,7 +334,7 @@ int fputc(int ch, FILE *f)
 	}
 	return (ch);
 }
-
+#endif
 
 
 
@@ -276,7 +356,7 @@ void bsp_init()
 	app_SystemInit();
 #elif BOARD_COMMON_SETUP_CLK
 	#if (defined STM32F10X_HD) || (defined STM32F10X_MD)
-	bsp_stm32f103_SystemInit();
+	bsp_stm32f10x_SystemInit();
 	#else
 	#error No Clock setup to define
 	#endif
