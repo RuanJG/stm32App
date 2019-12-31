@@ -82,6 +82,7 @@ int PMSG_send_msg_no_Tag( PMSG_t *pmsg, unsigned char *data, int len);
 // init , can use uart or customed send and receive interface , if no avaliable , set NULL 
 void PMSG_init_uart( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_func );
 void PMSG_init_handler(PMSG_t *pmsg, PMSG_msg_handler_type msg_func, PMSG_transmit_handler_type sendbytes_func , PMSG_transmit_handler_type  readbytes_func);
+void PMSG_init_uart_irq( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_func );
 
 // call  PMSG_receive_msg() , if 1 , call msg_func();
 void PMSG_even( PMSG_t *pmsg );

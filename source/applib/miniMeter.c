@@ -1,6 +1,9 @@
-#include "miniMeter.h"
 
+#include "main_config.h"
+#include "miniMeter.h"
 #include "systick.h"
+
+#ifdef USING_MINIMETER_MODULE
 
 /*
 出厂时仪表波特率是9600,可以自行设置
@@ -161,3 +164,6 @@ void miniMeter_init(miniMeter_t *meter, Uart_t* uart, unsigned char meterAddr)
 	meter->state = METER_STATE_IDEL;
 	miniMeter_stop(meter);
 }
+
+
+#endif

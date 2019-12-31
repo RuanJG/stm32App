@@ -12,30 +12,52 @@
 
 void bsp_stm32f10x_hsi()
 {
+		unsigned int pllMul;
+	
 		return ;
 	
-		//using HSI to PLL to 48M, when SystemCoreClockUpdate() , check the SystemCoreClock != 72000000 , will know whether it is failed.
+		//Reset , is it necessary ?
 		RCC_DeInit();
 		RCC_HSICmd(ENABLE);
 		while(RCC_GetFlagStatus(RCC_FLAG_HSIRDY) == RESET){};
 		
-		//加上这两句才能到64M
+		//?			
     FLASH_PrefetchBufferCmd(FLASH_PrefetchBuffer_Enable);  
     FLASH_SetLatency(FLASH_Latency_2);  
 		
-		RCC_HCLKConfig(RCC_SYSCLK_Div1);     
-    RCC_PCLK1Config(RCC_HCLK_Div2);  
-    RCC_PCLK2Config(RCC_HCLK_Div1);  
-		RCC_USBCLKConfig(RCC_USBCLKSource_PLLCLK_1Div5);
+		//ADC CLK =  PCLK2 / ADC Prescaler  
 		RCC_ADCCLKConfig(RCC_PCLK2_Div4);
-		
-		//8M to PLL need to div2 , and then go to the PLL mul , which can be adjust to be more higher freq.
-		RCC_PLLConfig(RCC_PLLSource_HSI_Div2, RCC_PLLMul_12);//4*12 = 48M , can use usb.
-		RCC_PLLCmd(ENABLE);
-		while(RCC_GetFlagStatus(RCC_FLAG_PLLRDY) == RESET){};
+		//APB2 Timer CLK = PCLK2 * 1
+		//APB2 Peripheral CLK = PCLK2
+		//PCLK2 = HCLK / APB2 prescaler 
+		RCC_PCLK2Config(RCC_HCLK_Div1); 
 			
-		RCC_SYSCLKConfig(RCC_SYSCLKSource_PLLCLK);
-		while(RCC_GetSYSCLKSource() != 0x08);
+		//APB1 Timer CLK = PCLK1 *1
+		//APB1 Peripheral CLK = PCLK1
+		//PCLK1 = HCLK / APB1 prescaler  
+		RCC_PCLK1Config(RCC_HCLK_Div1);
+			
+		//FCLK = HCLK
+			
+		// systick clk  = HCLK / 1or8 ;  I set 1 here , but the systick.c driver can config the prescaler,freq,period for special freq
+		SysTick_CLKSourceConfig(SysTick_CLKSource_HCLK); //SysTick_CLKSource_HCLK_Div8
+			
+		// HCLK  ( for AHB bus, core, memory, DMA ) = SYSCLK / AHB_Prescaler
+		RCC_HCLKConfig(RCC_SYSCLK_Div1); 
+
+		//SYSCLK selecter , from HSI , HSE, PLL, if target=8M, HSI = SYSCLK; otherwise use HSI->PLL->SYSCLK
+		if( BSP_TARGET_CLK == 8000000 ) {
+			RCC_SYSCLKConfig(RCC_SYSCLKSource_HSI);
+		}else{
+			pllMul = RCC_PLLMul_2 + (BSP_TARGET_CLK/(8000000/2) - 2)* (RCC_PLLMul_3-RCC_PLLMul_2);
+			RCC_PLLConfig(RCC_PLLSource_HSI_Div2, pllMul);
+			RCC_PLLCmd(ENABLE);
+			while(RCC_GetFlagStatus(RCC_FLAG_PLLRDY) == RESET){};
+				
+			RCC_SYSCLKConfig(RCC_SYSCLKSource_PLLCLK);
+			while(RCC_GetSYSCLKSource() != 0x08);
+		}
+		
 }
 
 void bsp_stm32f10x_SetSysClock(void)

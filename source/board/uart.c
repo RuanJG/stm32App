@@ -63,6 +63,7 @@ void Uart_Configuration (Uart_t *uart, USART_TypeDef *uartDev, uint32_t USART_Ba
 	//user cant set this read_cb by youself, example , in Iap_jumper 
 	uart->read_cb = NULL;
 	uart->uartDev = uartDev;
+	uart->pridata = NULL;
 	
 	// irq
 	if( uartDev == USART1 ){
@@ -157,7 +158,7 @@ void _uart_irq_function(Uart_t *uart)
 			c=USART_ReceiveData(uartDev);
 			fifo_put_force(&uart->rxfifo,c);
 			if( uart->read_cb != NULL)
-				uart->read_cb(c);
+				uart->read_cb(uart->pridata, c);
 			
 			//if( uartDev == USART3 )
 				//USART_SendData(USART1, tc);
@@ -213,6 +214,8 @@ int Uart_Get(Uart_t *uart, unsigned char *buffer, int count){
 	
 	if( uart == NULL )
 		return 0;
+	
+	if( 0 == fifo_valid(&uart->rxfifo) ) return 0;
 	
 	USART_ITConfig(uart->uartDev, USART_IT_RXNE, DISABLE);
 	for( i=0; i< count; i++){

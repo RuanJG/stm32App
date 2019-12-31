@@ -12,7 +12,7 @@
 
 #define UART_BUFFER_LEN 128
 
-typedef void (*uartReadCallBack)(unsigned char c);
+typedef void (*uartReadCallBack)(void *pridata, unsigned char c);
 
 typedef struct _uart_t {
 	USART_TypeDef *uartDev;
@@ -21,6 +21,7 @@ typedef struct _uart_t {
 	fifo_t rxfifo;
 	unsigned char txbuff[UART_BUFFER_LEN];
 	unsigned char rxbuff[UART_BUFFER_LEN];
+	void *pridata;
 }Uart_t;
 
 

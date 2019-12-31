@@ -10,8 +10,8 @@
 #if BOARD_Trex_V2
 
 
-#define MACHINE_OLD 1  // old machine switch define is difference
-#define USE_SERVER2 0 //just start thought current detection instead of swtich
+#define MACHINE_OLD 0  // old machine switch define is difference
+#define USE_SERVER2 1 //just start thought current detection instead of swtich
 
 #define _LOG(X...) if( 1 ) printf(X);
 

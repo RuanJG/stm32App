@@ -81,6 +81,7 @@ int PMSG_send_msg_no_Tag( PMSG_t *pmsg, unsigned char *data, int len)
 	return 1;
 }
 
+
 int PMSG_send_msg( PMSG_t *pmsg, unsigned char tag, unsigned char *data, int len)
 {
 	unsigned char packget[PROTOCOL_MAX_PACKET_SIZE];
@@ -94,6 +95,19 @@ int PMSG_send_msg( PMSG_t *pmsg, unsigned char tag, unsigned char *data, int len
 }
 
 
+void PMSG_irq_callBack_handler(void *pridata, unsigned char data)
+{
+	PMSG_t *pmsg;
+	pmsg = ( PMSG_t *) pridata;
+	
+	if( pmsg == NULL ) return;
+	
+	if( 1 == PMSG_parse_byte( pmsg , data ) )
+	{
+		pmsg->msg_handler( pmsg->msg );
+	}
+	
+}
 
 
 // init , can use uart or customed send and receive interface , if no avaliable , set NULL 
@@ -106,6 +120,7 @@ void PMSG_init_handler( PMSG_t *pmsg , PMSG_msg_handler_type msg_func, PMSG_tran
 	protocol_init( &pmsg->decoder );
 	protocol_init( &pmsg->encoder );
 }
+// init , normal uart module
 void PMSG_init_uart( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_func )
 {
 	pmsg->pUart = uart;
@@ -115,7 +130,18 @@ void PMSG_init_uart( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_fun
 	protocol_init( &pmsg->decoder );
 	protocol_init( &pmsg->encoder );
 }
-
+//init , irq even
+void PMSG_init_uart_irq( PMSG_t *pmsg , Uart_t *uart , PMSG_msg_handler_type msg_func )
+{
+	pmsg->pUart = uart;
+	pmsg->sendbytes_handler = NULL;
+	pmsg->readbytes_handler = NULL;
+	pmsg->msg_handler = msg_func;
+	pmsg->pUart->read_cb = PMSG_irq_callBack_handler;
+	pmsg->pUart->pridata = pmsg;
+	protocol_init( &pmsg->decoder );
+	protocol_init( &pmsg->encoder );
+}
 
 // user can ignore this even() , you can use PMSG_receive_msg() or PMSG_parse_byte() to get the msg and then deal with them yourselve
 void PMSG_even( PMSG_t *pmsg )
