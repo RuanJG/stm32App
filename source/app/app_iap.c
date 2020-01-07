@@ -4,7 +4,6 @@
 #include "stm32f10x.h"
 #include "uart.h"
 #include "protocol.h"
-#include "systick.h"
 #include "iap.h"
 #include "hw_config.h"
 #include "flashRW.h"
@@ -32,32 +31,21 @@ volatile unsigned int program_buff_index = 0;
 //data packget seq 
 unsigned char program_data_frame_seq = 0;
 
-
 //use for program flash
-volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
-
+static volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
 
 // coders
 protocol_t decoder;
 protocol_t encoder;
 
+Uart_t *iapUart1;
 
-// iap_lost_ms if no data receive in iap_lost_ms , jump to app
-unsigned int _iap_lost_ms_max = 0;
-volatile unsigned int iap_lost_ms;
+int iap_app_port_type;
 
 // if flash has programed , iap_has_flashed_data will set 1
 volatile int iap_has_flashed_data = 0;
 
-// inited flag
-volatile char iap_inited_flag = 0;
-
-
-
-// timer , check timeout
-systick_time_t timeout_timer;
-
-
+int IPS_US ;
 
 // uart rx buffer
 #define UART_RX_BUFFER_SIZE 8
@@ -81,111 +69,22 @@ void _memset(void *dst, unsigned char data, unsigned int n)
 	}
 }
 
-
-int is_app_flashed()
+void iap_app_delayus(int us)
 {
-	#if 1
-	if (((*(__IO uint32_t*)IAP_APP_ADDRESS) & 0x2FFE0000 ) == 0x20000000)
-		return 1;
-	else
-		return 0;
+	volatile int i;
 	
-	#else
-	return 1;
-	#endif
+	i = IPS_US * us;
+
+	while( i-- > 0) __NOP();
+	
 }
 
-int get_iap_tag()
-{
-	return *(__IO int*) IAP_TAG_ADDRESS;
-}
-
-int set_iap_tag(int tag)
-{//1 ok, 0 flase
-	int timeout = 10;
-	char res, ntag;
-	
-	
-	FLASHStatus = FLASH_COMPLETE;
-	FLASH_Unlock();
-	FLASH_ClearFlag(FLASH_FLAG_EOP | FLASH_FLAG_PGERR | FLASH_FLAG_WRPRTERR);
-	
-	res = 0;
-	timeout = 10;
-	while( timeout-- > 0)
-	{
-		FLASHStatus = FLASH_ErasePage(IAP_TAG_ADDRESS);
-		if( FLASHStatus == FLASH_COMPLETE ){
-			res = 1;
-			break;
-		}
-	}
-	
-	if( res == 1 )
-	{
-		res = 0;
-		timeout = 10;
-		while( timeout-- > 0)
-		{
-			FLASHStatus = FLASH_ProgramWord(IAP_TAG_ADDRESS,tag) ;//FLASH_ProgramOptionByteData(IAP_TAG_ADDRESS,tag);
-			if( FLASHStatus == FLASH_COMPLETE ){
-				res = 1;
-				break;
-			}
-		}
-	}
-
-	FLASH_Lock();
-	
-	if( res == 1)
-	{
-		ntag = get_iap_tag();
-		if( ntag != tag )
-			res = 0;
-	}
-	
-	return res;
-}
-
-int is_iap_tag_set()
-{
-	// force into iap
-	int tag;
-	tag = get_iap_tag();
-	if( tag == IAP_TAG_UPDATE_VALUE)
-		return 1;
-	else
-		return 0;
-}
-int clean_iap_tag()
-{
-	return set_iap_tag(0);
-}
-
-
-void iap_reset()
-{
-		//¹ØÖÐ¶Ï
-	__set_PRIMASK(1);
-	__set_FAULTMASK(1);
-	
-	// vectreset reset cm3 but other extern hardword
-	//*((uint32_t*)0xE000ED0C) = 0x05FA0001;
-	// sysresetReq reset all ic hardword system
-	*((uint32_t*)0xE000ED0C) = 0x05FA0004;
-	while(1);
-}
-
-
-typedef void(*iapFunction)(void);
 void iap_jump_to_app()
 {
 	iapFunction Jump_To_Application;
 	uint32_t JumpAddress;
 	
 	//return;
-	if( is_iap_tag_set() )
-		clean_iap_tag();
 	
 	bsp_deinit();
 	
@@ -225,53 +124,46 @@ void iap_jump_to_app_or_deamon()
 	
 }
 
-int iap_receive_data(unsigned char * data, int size)
+static int iap_receive_data(unsigned char * data, int size)
 {
 	int count;
-	unsigned char *pointer;
 	
-	count = 0;
-	pointer = data;
-	
-#if IAP_PORT_UART
-	count += Uart_get(pointer+count,size-count);
-	if ( count >= size ) return count;
+#if IAP_APP_PORT_UART
+	count = Uart_Get( iapUart1 , data, size );
 #endif
 	
-#if IAP_PORT_CAN1 
-	count += Can1_get(pointer+count,size-count);
-	if ( count >= size ) return count;
+#if IAP_APP_PORT_CAN1 
+	count = Can1_get(data, size );
 #endif
-	
-#if IAP_PORT_USB 
-	count += USB_RxRead(pointer+count,size-count);
-	if ( count >= size ) return count;
+	 
+#if IAP_APP_PORT_USB 
+	count = USB_RxRead( data, size );
 #endif
 	
 	return count;
 }
 
 
-void iap_send_packget( unsigned char *data , unsigned int size)
+static void iap_send_packget( unsigned char *data , unsigned int size)
 {
 	protocol_encode(&encoder,data,size);
 	
-#if IAP_PORT_UART
-		Uart_send(encoder.data,encoder.len);
+#if IAP_APP_PORT_UART
+	Uart_Put_Sync(iapUart1, encoder.data,encoder.len);
 #endif
-#if  IAP_PORT_CAN1
-		Can1_Send(encoder.data, encoder.len);
+#if  IAP_APP_PORT_CAN1
+	Can1_Send(0x10,iap_encoder.data,iap_encoder.len);
 #endif
 	
-#if IAP_PORT_USB 
-	USB_TxWrite(encoder.data, encoder.len);
+#if IAP_APP_PORT_USB 
+	USB_TxWrite_Sync(encoder.data, encoder.len);
 #endif
 	
 }
 
 
 
-void answer_ack_ok(unsigned char id)
+static void answer_ack_ok(unsigned char id)
 {
 	unsigned char data[4];
 	data[0] = PACKGET_ACK_ID;
@@ -279,7 +171,7 @@ void answer_ack_ok(unsigned char id)
 	data[2] = id;
 	iap_send_packget(data , 3);
 }
-void answer_ack_false(char error)
+static void answer_ack_false(char error)
 {
 	unsigned char data[4];
 	data[0] = PACKGET_ACK_ID;
@@ -288,7 +180,26 @@ void answer_ack_false(char error)
 	iap_send_packget(data , 3);
 }
 
-
+int verify_page(uint32_t page_addr , unsigned char *data, int len)
+{
+	int i ,index,res;
+	uint32_t word, addr;
+	__IO int* pageAddr ;
+	
+	pageAddr = (__IO int*) page_addr;
+	res = 1;
+	
+	for( index = 3, i=0 ; index < len && index < FLASH_PAGE_SIZE ; index+=4,i++)
+	{
+		word = (data[index]<<24) | (data[index-1]<<16) | (data[index-2]<<8) | data[index-3];
+		if( *(pageAddr+i) != word ) 
+		{
+			res = 0;
+			break;
+		}
+	}
+	return res;
+}
 
 int program_page_to_flash(uint32_t page_addr , unsigned char *data, int len)
 {
@@ -319,11 +230,15 @@ int program_page_to_flash(uint32_t page_addr , unsigned char *data, int len)
 		addr+=4;
 	}
 	
-	iap_has_flashed_data = 1;
+	if( 1 == verify_page( page_addr, data, len ) ){
+		iap_has_flashed_data = 1;
+		return 1;
+	}
 	
-	return 1;
-	
+	return -2;
 }
+
+
 
 
 volatile uint32_t program_addr;
@@ -425,7 +340,7 @@ void handle_end_packget_data(unsigned char *data, int len)
 		if( 0 ==  res){
 			answer_ack_ok(PACKGET_END_ID);
 			if(data[0] == PACKGET_END_JUMP ){
-				systick_delay_us(600000);
+				iap_app_delayus(600000);
 				iap_jump_to_app();
 			}
 		}else {
@@ -438,7 +353,7 @@ void handle_end_packget_data(unsigned char *data, int len)
 		answer_ack_ok(PACKGET_END_ID);
 		if(data[0] == PACKGET_END_JUMP )
 		{
-			systick_delay_us(50000);
+			iap_app_delayus(50000);
 			iap_jump_to_app();
 		}
 	}
@@ -481,90 +396,79 @@ void handle_packget(unsigned char *pkg, unsigned int len)
 __STATIC_INLINE void iap_parase(unsigned char c)
 {
 	//iap_lost_ms = 0;
-	if( iap_inited_flag ==1 && 1 == protocol_parse( &decoder,c) )
+	if(1 == protocol_parse( &decoder,c) )
 	{
-		iap_lost_ms = 0;
 		handle_packget(decoder.data,decoder.len);
 	}
-	
 }
-
 
 
 /*
-****************************************   irq call back   *************
-
-void uart_receive_event(unsigned char c)
+void iap_app_uart_init()
 {
-	if( 1==IAP_PORT_UART)
-		iap_parase(c);
-}
-
-
-
-void can1_receive_event(CanRxMsg *msg)
-{
-
-	int i;
+	GPIO_InitTypeDef GPIO_InitStructure;
 	
-	if( 1 == IAP_PORT_CAN1){
-		for( i=0 ; i< msg->DLC; i++)
-		{
-			iap_parase(msg->Data[i]);
-		}
-	}
+	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD,ENABLE);
+	
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = IAP_APP_UART_TX_PIN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(IAP_APP_UART_TX_GPIO, &GPIO_InitStructure);
+    										  
+	GPIO_StructInit(&GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = IAP_APP_UART_RX_PIN;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+	GPIO_Init(IAP_APP_UART_RX_GPIO, &GPIO_InitStructure); 
+	
+	IAP_APP_UART_PIN_REMAP_FUNC() ;
 
+	Uart_Configuration (&iapUart1, IAP_APP_UARTDEV, IAP_APP_UART_BAUDRATE, USART_WordLength_8b, USART_StopBits_1, USART_Parity_No);
+	
 }
-
-**************************************************************************
 */
 
 
 
 
 
-void iap_init()
+void iap_app_init(void *pridata, int port_type)
 {
 	if( 0 == is_iap_tag_set() ){
-		clean_iap_tag();
 		iap_jump_to_app();
+	}else{	
+		clean_iap_tag();
 	}
-	
 	
 	protocol_init(&encoder);
 	protocol_init(&decoder);
 	
-	//systick_init_timer( &timeout_timer, 10);
+//#if IAP_APP_PORT_UART
+//	iap_app_uart_init();
+//#endif
+#if IAP_APP_PORT_UART
+	iapUart1 = (Uart_t*)pridata;
+#endif
 	
-	iap_inited_flag = 1;
+	iap_app_port_type = port_type;
 	
-	_iap_lost_ms_max = 60*1000 ;
-	
+	IPS_US = 1;//SystemCoreClock /1000000;
 }
 
 
 
-void iap_loop()
+void iap_app_event()
 {
-	int i, count;
-	//check iap_lost_ms, it will be fill 0 in can1 or uart receive event
+	volatile int i, count;
 	
 	count = iap_receive_data(uartRxBuffer,UART_RX_BUFFER_SIZE);
 	for(i=0; i< count ; i++)
 		iap_parase(uartRxBuffer[i]);
-	
-	//if( count > 0 ) USB_TxWrite(uartRxBuffer, count);
-	/*
-	if( systick_check_timer( &timeout_timer ) == 1)
-	{
-		if( iap_lost_ms  >= _iap_lost_ms_max )
-		{
-			iap_jump_to_app();
-		}else{
-			iap_lost_ms += 10;
-		}
-	}	
-	*/
 }
 
 

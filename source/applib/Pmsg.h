@@ -17,6 +17,7 @@
 #define PMSG_TAG_LOG		0x20
 #define PMSG_TAG_DATA		0x30
 #define PMSG_TAG_CMD		0x40
+#define PMSG_TAG_FORWARD 0x50  // [PMSG_TAG_FORWARD] [ tag for next board] ... [tag for final board][data...]
 #define IS_PMSG_TAG(T,V) (( V & 0xf0 ) == T)
 
 

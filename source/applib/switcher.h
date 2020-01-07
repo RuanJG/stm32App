@@ -17,6 +17,7 @@ struct switcher {
 	uint16_t GPIO_Pin;
 	SwitchHandler press_handler;
 	SwitchHandler release_handler;
+	int tolerance;
 
 	unsigned short counter;
 	unsigned short sum;
@@ -26,7 +27,7 @@ struct switcher {
 
 
 
-void switcher_init(struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , GPIOMode_TypeDef inputmode, SwitchHandler press_handler , SwitchHandler release_handler   );
+void switcher_init(struct switcher* sw, int maxcount,int tolerance, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , GPIOMode_TypeDef inputmode, SwitchHandler press_handler , SwitchHandler release_handler   );
 void switcher_interval_check(volatile  struct switcher *sw );
 
 

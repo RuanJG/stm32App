@@ -24,14 +24,54 @@
 #define BOARD_MULTIKILL_PCBA 		0  //STM32F10X_MD,HSE_VALUE=8000000
 #define BOARD_UC_SHAVER_SAMPLE 	0  //STM32F10X_MD,HSE_VALUE=8000000
 #define BOARD_TSC3200 					0  //STM32F10X_MD,HSE_VALUE=8000000
-#define BOARD_CSWL_LED_MONITOR 	0  //STM32F10X_MD,HSE_VALUE=16000000
-#define BOARD_CSWL_CONTROL_BOARD 	0  //STM32F10X_HD,HSE_VALUE=16000000   //STM32F103RCT6
-#define BOARD_CSWL_CONTROL_BOARD_V2 1
+#define BOARD_CSWL_LED_MONITOR 	1  //STM32F10X_MD,HSE_VALUE=16000000     //  0x8003C00 0xC400 ,
+#define BOARD_CSWL_CONTROL_BOARD 	0  //STM32F10X_HD,HSE_VALUE=16000000   //STM32F103RCT6  0x8004000 0x3C000 , 
+#define BOARD_CSWL_CONTROL_BOARD_V2 0  //STM32F10X_HD,HSE_VALUE=16000000   //STM32F103RCT6  0x8004000 0x3C000 , 
 #define BOARD_VARES_CHARGER_BOARD 0  //STM32F10X_LD_VL,HSE_VALUE=0,BSP_TARGET_CLK=24000000
 #define BOARD_VARES_CHARGER_IR_BOARD 0  //STM32F10X_MD,HSE_VALUE=8000000
 #define BOARD_STUSB4500_PROGRAM_BOARD 0  //STM32F10X_MD,HSE_VALUE=8000000
 
-#define BOARD_IAP			0  // Select the same config(MCU type, hse clock) as the board you choise 
+
+//* when you want to build iap app, set BOARD_IAP 1 at the same time
+#define BOARD_IAP			1   // board you choise(MCU type, hse clock)  0x8000000 0x10000 ,
+
+#define IAP_APP_PORT_CAN1  0  
+#define IAP_APP_PORT_USB   0
+#define IAP_APP_PORT_UART 1
+
+
+
+//#######################  IAP setup
+// app addr : IAP_FIRMWARE_ADRESS + IAP_FIRMWARE_SIZE + FLASH_PAGE_SIZE  
+// app size :(IAP_FLASH_SIZE - IAP_FIRMWARE_SIZE - FLASH_PAGE_SIZE) 
+#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
+
+#define FLASH_PAGE_SIZE    ((uint16_t)0x800)
+#define IAP_FLASH_SIZE (0x40000) // Flash Totally size : you can get this value in 'Target Option' , when you choose your stm32 ic
+#define IAP_FIRMWARE_ADRESS (0x8000000) // normal is 0x8000000
+#define IAP_FIRMWARE_SIZE 0x3800 //14kB  ,  app addr = 0x8004000 0x3C000
+
+#else
+
+#define FLASH_PAGE_SIZE    ((uint16_t)0x400)
+#define IAP_FLASH_SIZE (0x10000) // Flash Totally size : you can get this value in 'Target Option' , when you choose your stm32 ic
+#define IAP_FIRMWARE_ADRESS (0x8000000) // normal is 0x8000000
+#define IAP_FIRMWARE_SIZE 0x3800 //14kB ,  app addr = 0x8003C00 0xC400
+	
+#endif
+
+
+
+//#######################  IAP App setup
+/*
+#define IAP_APP_UARTDEV		 	USART1
+#define IAP_APP_UART_TX_GPIO 	GPIOA
+#define IAP_APP_UART_TX_PIN 	GPIO_Pin_9 
+#define IAP_APP_UART_RX_GPIO 	GPIOA
+#define IAP_APP_UART_RX_PIN 	GPIO_Pin_10
+#define IAP_APP_UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
+#define IAP_APP_UART_BAUDRATE	115200
+*/
 
 
 //##################################################### config irq priority
@@ -61,15 +101,16 @@
 //#####################################################  Common Config 
 
 //****** config iap ( more config in  "iap.h" )
-#define BOARD_HAS_IAP  1
+#define BOARD_HAS_IAP  0
 #define IAP_PORT_UART  0
 #define IAP_PORT_CAN1  0  // not support now
-#define IAP_PORT_USB   1
+#define IAP_PORT_USB   0
+
 
 //******  config using usb  (can1 and  usb  can't use in the sametime )
 #define BOARD_USING_USB 1
-#define USB_COM_RX_BUF_SIZE       512			//  (1024 + 256)
-#define USB_COM_TX_BUF_SIZE       512			//  (1024 + 256)
+#define USB_COM_RX_BUF_SIZE       128			//  (1024 + 256)
+#define USB_COM_TX_BUF_SIZE       128			//  (1024 + 256)
 
 //****** config can1 (can1 and  usb  can't use in the sametime )
 #define BOARD_USING_CAN1 0  
@@ -98,35 +139,6 @@
 
 
 //#####################################################   Board special Config
-#if BOARD_IAP
-//IAP setup
-#define IAP_PORT_UART 1
-#define IAP_UARTDEV		 	USART1
-#define IAP_UART_TX_GPIO 	GPIOA
-#define IAP_UART_TX_PIN 	GPIO_Pin_9 
-#define IAP_UART_RX_GPIO 	GPIOA
-#define IAP_UART_RX_PIN 	GPIO_Pin_10
-#define IAP_UART_PIN_REMAP_FUNC() //GPIO_PinRemapConfig(GPIO_Remap_USART1, ENABLE)
-#define IAP_UART_BAUDRATE	115200
-#define IAP_PORT_CAN1  0  
-#define IAP_PORT_USB   0
-#define IAP_GPIO_DETECTION 0
-#define IAP_GPIO GPIOB
-#define IAP_GPIO_PIN GPIO_Pin_2
-#define IAP_GPIO_LEVEL 1
-//Board config
-#define BOARD_HAS_IAP  0
-#define BOARD_USING_USB 0
-#define USB_COM_RX_BUF_SIZE       0
-#define USB_COM_TX_BUF_SIZE       0	
-#define BOARD_USING_CAN1 0  
-#define BOARD_USING_SYSTICK 1
-#define BOARD_SYSTICK_FREQ	1000
-#define BOARD_COMMON_SETUP_CLK  1
-#define BOARD_PRIVATE_SETUP_CLK  0
-
-#endif // BOARD_IAP
-
 
 #if BOARD_Trex_V2
 
@@ -158,8 +170,8 @@
 
 
 #if BOARD_CSWL_LED_MONITOR
-#define BOARD_HAS_IAP  0
-#define IAP_PORT_UART  1
+#define BOARD_HAS_IAP  1
+#define IAP_PORT_UART  0
 #define IAP_PORT_USB   0
 #define BOARD_USING_USB 0
 #define BOARD_USING_SYSTICK 1
@@ -168,18 +180,18 @@
 #endif //BOARD_CSWL_LED_MONITOR
 
 #if BOARD_CSWL_CONTROL_BOARD
-#define BOARD_HAS_IAP  0
-//#define IAP_PORT_UART  1
-//#define IAP_PORT_USB   0
+#define BOARD_HAS_IAP  1
+#define IAP_PORT_UART  0
+#define IAP_PORT_USB   0
 #define BOARD_USING_USB 0
 #define BOARD_USING_SYSTICK 1
 #define USING_MINIMETER_MODULE
 #endif // BOARD_CSWL_CONTROL_BOARD
 
 #if BOARD_CSWL_CONTROL_BOARD_V2
-#define BOARD_HAS_IAP  0
-//#define IAP_PORT_UART  1
-//#define IAP_PORT_USB   0
+#define BOARD_HAS_IAP  1
+#define IAP_PORT_UART  0
+#define IAP_PORT_USB   0
 #define BOARD_USING_USB 0
 #define BOARD_USING_SYSTICK 1
 #define USING_MINIMETER_MODULE

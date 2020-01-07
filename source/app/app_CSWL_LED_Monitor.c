@@ -126,20 +126,7 @@ void Uart_USB_SWJ_init()
 	
 
 	
-#if BOARD_HAS_IAP
-	#if IAP_PORT_USB 
-	iap_init_in_usb();
-	#endif
-	#if IAP_PORT_CAN1
-	iap_init_in_can1();
-	#endif
-	#if  IAP_PORT_UART
-	iap_init_in_uart( IAP_UART );
-	#endif
-#endif
 
-	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
-	console_init( CONSOLE_USB_TYPE ,NULL );
 	
 }
 
@@ -941,6 +928,14 @@ void PC_msg_handler(PMSG_msg_t msg)
 			}
 		break;
 			
+		case PMSG_TAG_IAP_START_ID:
+			if( msg.data_len == 1 ){
+				iap_jump();
+			}else{
+				PC_LOGE("PMSG_TAG_IAP_START_ID: data error");
+			}
+		break;
+			
 		default:
 			break;
 	}
@@ -949,10 +944,46 @@ void PC_msg_handler(PMSG_msg_t msg)
 
 
 
+
+
+
+
+#if BOARD_IAP 
 void app_init()
 {
 	switches_init();
 	Uart_USB_SWJ_init();
+#if IAP_APP_PORT_UART
+	iap_app_init(PC_UART,PORT_UART_TYPE );
+#endif
+}
+void app_event()
+{
+	iap_app_event();
+}
+#else
+
+
+
+void app_init()
+{
+	switches_init();
+	Uart_USB_SWJ_init();
+	
+#if BOARD_HAS_IAP
+	#if IAP_PORT_USB 
+	iap_init_in_usb();
+	#endif
+	#if IAP_PORT_CAN1
+	iap_init_in_can1();
+	#endif
+	#if  IAP_PORT_UART
+	iap_init_in_uart( IAP_UART );
+	#endif
+#endif
+	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
+	//console_init( CONSOLE_USB_TYPE ,NULL );
+	
 	PMSG_init_uart( &PC_pmsg, PC_UART, PC_msg_handler);
 	capture_init();
 	
@@ -973,5 +1004,8 @@ void app_event()
 	PMSG_even(&PC_pmsg);
 	cmd_even();
 }
+
+
+#endif //iap
 
 #endif //BOARD_CSWL_LED_MONITOR

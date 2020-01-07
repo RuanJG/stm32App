@@ -386,8 +386,12 @@ void bsp_init()
 	SystemInit();
 #endif
 	
+#if BOARD_IAP
+	// set vect table on 0; which has set in SystemInit()
+#else
 #if BOARD_HAS_IAP
 	iap_config_vect_table();
+#endif
 #endif
 	
 	NVIC_PriorityGroupConfig(CUSTOM_SYSTICK_IRQ_PRIORITY);
@@ -420,11 +424,11 @@ void bsp_deinit()
 			CAN_DeInit(CAN1);
 	
 	#if BOARD_IAP
-	  if( 0 != IAP_PORT_UART )
-			USART_DeInit(IAP_UARTDEV);
+	  //if( 0 != IAP_APP_PORT_UART )
+			//USART_DeInit(IAP_APP_UARTDEV);
 	#endif
 	
-	#if IAP_PORT_USB
+	#if ( IAP_PORT_USB == 1 ) || ( IAP_APP_PORT_USB == 1 )
 		USB_Deinit();
 	#endif
 #endif

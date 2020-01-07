@@ -63,6 +63,8 @@ char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
 #define PC_TAG_DATA_BUTTON (PMSG_TAG_DATA|0x4) // startbutton data[0] = 1 pressed 
 #define PC_TAG_DATA_QRCODE (PMSG_TAG_DATA|0x5)
 
+//PC to boards
+#define PC_TAG_FORWARD_LEDBOARD  ( PMSG_TAG_FORWARD | 0x04)  // [PMSG_TAG_FORWARD] [ tag for next board] ... [tag for final board][data...]
 
 Uart_t Uart1;
 Uart_t Uart2;
@@ -186,20 +188,7 @@ void Uart_USB_SWJ_init()
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 	
 	
-#if BOARD_HAS_IAP
-	#if IAP_PORT_USB 
-	iap_init_in_usb();
-	#endif
-	#if IAP_PORT_CAN1
-	iap_init_in_can1();
-	#endif
-	#if  IAP_PORT_UART
-	iap_init_in_uart( IAP_UART );
-	#endif
-#endif
 
-	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
-	console_init( CONSOLE_USB_TYPE ,NULL );
 	
 }
 
@@ -270,7 +259,8 @@ void relay_init()
 
 
 
-#define SW_INTERVAL_COUNT  10  // SW_INTERVAL_MS 检查一次GPIO口， SW_INTERVAL_COUNT次后发出按键事件, 用作过滤
+#define SW_INTERVAL_COUNT  40  // SW_INTERVAL_MS 检查一次GPIO口， SW_INTERVAL_COUNT次后发出按键事件, 用作过滤
+#define SW_INTERVAL_TOLERANCE 10 // 30%
 #define SW_INTERVAL_MS 5
 systick_time_t sw_timer;
 volatile struct switcher startButton;
@@ -284,7 +274,7 @@ void switch_key_release_handler()
 
 void switch_init()
 {
-	switcher_init( &startButton, SW_INTERVAL_COUNT, 1 , 0 , GPIOB, GPIO_Pin_5, GPIO_Mode_IN_FLOATING, NULL , switch_key_release_handler);
+	switcher_init( &startButton, SW_INTERVAL_COUNT, SW_INTERVAL_TOLERANCE, 1 , 0 , GPIOB, GPIO_Pin_5, GPIO_Mode_IN_FLOATING, switch_key_release_handler, NULL);
 
 	systick_init_timer( &sw_timer, SW_INTERVAL_MS );
 }
@@ -634,7 +624,7 @@ void PC_msg_handler(PMSG_msg_t msg)
 		break;
 			
 		case PMSG_TAG_IAP_START_ID:
-			if( msg.data_len == 2 ){
+			if( msg.data_len == 1 ){
 				iap_jump();
 			}else{
 				PC_LOGE("PMSG_TAG_IAP_START_ID: data error");
@@ -663,9 +653,35 @@ void PC_msg_handler(PMSG_msg_t msg)
 			}
 		break;
 			
+		case PC_TAG_FORWARD_LEDBOARD:
+			if( msg.data_len >= 1 ){
+				if( 0 == PMSG_send_msg_no_Tag( &LED_pmsg , msg.data, msg.data_len) ){
+					PC_LOGE("PC_TAG_FORWARD_LEDBOARD: send Failed");
+				}
+			}else{
+				PC_LOGE("PC_TAG_FORWARD_LEDBOARD: data error");
+			}
+		break;
+			
 		default:
-			PC_LOGE("PC_PMSG:  unknow data(0x%02x)",msg.tag);
-			break;
+			if( (msg.tag & 0xf0) != PMSG_TAG_FORWARD )
+			{
+				PC_LOGE("PC_PMSG:  unknow data(0x%02x)",msg.tag);
+				break;
+			}
+			
+			if( (msg.tag&0x0f) == 0x2 ){
+				Uart_Put(&Uart2, msg.data,msg.data_len);
+			}else if( (msg.tag&0xf) == 0x3 ){
+				Uart_Put(&Uart3, msg.data,msg.data_len);
+			}else if( (msg.tag&0xf) == 0x4 ){
+				Uart_Put(&Uart4, msg.data,msg.data_len);
+			}else if( (msg.tag&0xf) == 0x5 ){
+				Uart_Put(&Uart5, msg.data,msg.data_len);
+			}else{
+				PC_LOGE("PMSG_FORWARD:  unknow way (0x%02x)",msg.tag);
+			}
+		break;
 	}
 	
 }
@@ -683,10 +699,43 @@ void LED_msg_handler(PMSG_msg_t msg)
 
 
 
+#if BOARD_IAP 
 void app_init()
 {
 	relay_init();
 	Uart_USB_SWJ_init();
+#if IAP_APP_PORT_UART
+	iap_app_init(PC_UART,PORT_UART_TYPE );
+#endif
+}
+void app_event()
+{
+	iap_app_event();
+}
+#else
+
+
+
+
+void app_init()
+{
+	relay_init();
+	Uart_USB_SWJ_init();
+	
+#if BOARD_HAS_IAP
+	#if IAP_PORT_USB 
+	iap_init_in_usb();
+	#endif
+	#if IAP_PORT_CAN1
+	iap_init_in_can1();
+	#endif
+	#if  IAP_PORT_UART
+	iap_init_in_uart( IAP_UART );
+	#endif
+#endif
+	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
+	//console_init( CONSOLE_USB_TYPE ,NULL );
+	
 	PMSG_init_uart( &PC_pmsg, PC_UART, PC_msg_handler );
 	PMSG_init_uart( &LED_pmsg, LED_UART, LED_msg_handler );
 	switch_init();
@@ -722,5 +771,6 @@ void app_event()
 	victor8165_even();
 	Ameter_even();
 }
+#endif //iap
 
 #endif //BOARD_CSWL_LED_MONITOR

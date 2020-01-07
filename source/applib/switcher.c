@@ -2,7 +2,7 @@
 
 #include "switcher.h"
 
-void switcher_init(struct switcher* sw, int maxcount, int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , GPIOMode_TypeDef inputmode, SwitchHandler press_handler , SwitchHandler release_handler   )
+void switcher_init(struct switcher* sw, int maxcount, int tolerance,  int default_level, int press_level, GPIO_TypeDef* GPIOX , uint16_t GPIO_Pin_x , GPIOMode_TypeDef inputmode, SwitchHandler press_handler , SwitchHandler release_handler   )
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
@@ -33,6 +33,8 @@ void switcher_init(struct switcher* sw, int maxcount, int default_level, int pre
 	sw->counter = 0;
 	sw->sum = 0;
 	sw->MAXCOUNT = maxcount;
+	
+	sw->tolerance = tolerance;
 }
 
 
@@ -45,10 +47,10 @@ void switcher_interval_check(volatile  struct switcher *sw )
 	
 	if( sw->counter  < sw->MAXCOUNT ) return;
 	
-	if( 0 == sw->sum ){
+	if( sw->sum <= sw->tolerance ){
 		// totally level 0
 		level = 0;
-	}else if( sw->sum == sw->counter ){
+	}else if( sw->sum >= (sw->counter - sw->tolerance) ){
 		// totally level 1
 		level = 1;
 	}else{
@@ -57,9 +59,8 @@ void switcher_interval_check(volatile  struct switcher *sw )
 	
 	sw->counter = 0;
 	sw->sum = 0;
-	
-	if( level == 2 ) return;
-	
+	if( level == 2 ) return ;
+
 	if( level == sw->press_level ){
 		if( sw->state != level && sw->press_handler != NULL ) sw->press_handler();
 		sw->state = level;
@@ -68,6 +69,7 @@ void switcher_interval_check(volatile  struct switcher *sw )
 		if( sw->state != level && sw->release_handler != NULL ) sw->release_handler();
 		sw->state = level;
 	}
+		
 }
 
 

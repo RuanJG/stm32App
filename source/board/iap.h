@@ -2,6 +2,7 @@
 #define _IAP_H
 
 #include "uart.h"
+#include "main_config.h"
 
 //*************************************************    program protocal
 
@@ -30,32 +31,20 @@
 //********************************    config
 
 
-#if defined (STM32F10X_HD) || defined (STM32F10X_HD_VL) || defined (STM32F10X_CL) || defined (STM32F10X_XL)
-  #define FLASH_PAGE_SIZE    ((uint16_t)0x800)
-#else
-  #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
-#endif
 
 
-// Define Application Address Area */
-// iap firmware adress: 0x8000000   			size = 0x1c00   7k 
-// iap tag address : 	0x8000000 + 0x1c00	  	size=FLASH_PAGE_SIZE  			// 1K
-// app firmware adress :0x8000000 + + 0x1c00+ FLASH_PAGE_SIZE =  0x8002000		size = (0x10000 - 0x2000) = 0xE000	//56k
 
 
-// iap flash in 0x8000000 0x3C00 ( iap  + tag 0x400 )
-// app flash in 0x8003C00 0xC400 (IAP_FLASH_SIZE - IAP)
-#define IAP_FLASH_SIZE (0x10000) // you can get this value in 'Target Option' , when you choose your stm32 ic
-#define IAP_FIRMWARE_ADRESS (0x8000000)
-#define IAP_FIRMWARE_SIZE 0x3800 //9kB
 #define IAP_TAG_ADDRESS (IAP_FIRMWARE_ADRESS+IAP_FIRMWARE_SIZE)
 #define IAP_TAG_UPDATE_VALUE 0xAB
 #define IAP_APP_ADDRESS (IAP_TAG_ADDRESS + FLASH_PAGE_SIZE)
 #define IAP_APP_SIZE (IAP_FLASH_SIZE - IAP_FIRMWARE_SIZE - FLASH_PAGE_SIZE)
 
+#define PORT_UART_TYPE	1
+#define PORT_USB_TYPE		2
+#define PORT_CAN1_TYPE	4
 
-
-
+typedef void(*iapFunction)(void);
 
 void iap_config_vect_table(void);
 void iap_can_receive_handler(unsigned char c);
@@ -65,12 +54,18 @@ void iap_init_in_usb(void);
 void iap_usb_receive_handler(unsigned char c);
 void iap_jump(void);
 
-
+int is_app_flashed();
+int get_iap_tag();
+int set_iap_tag(int tag);
+void iap_reset();
 
 void iap_init(void);
 void iap_loop(void);
 void iap_jump_to_app_or_deamon(void);
 int is_iap_tag_set(void);
+int clean_iap_tag();
 
+void iap_app_event();
+void iap_app_init(void *pridata, int port_type);
 
 #endif //_IAP_H

@@ -13,9 +13,7 @@
 #define PROGRAM_STEP_GET_DATA 2
 #define PROGRAM_STEP_END 3
 
-#define PORT_UART_TYPE	1
-#define PORT_USB_TYPE		2
-#define PORT_CAN1_TYPE	4
+
 
 //use for program flash
 volatile FLASH_Status FLASHStatus = FLASH_COMPLETE;
@@ -122,11 +120,23 @@ void iap_config_vect_table()
 
 
 
+void iap_reset()
+{
+		//πÿ÷–∂œ
+	__set_PRIMASK(1);
+	__set_FAULTMASK(1);
+	
+	// vectreset reset cm3 but other extern hardword
+	//*((uint32_t*)0xE000ED0C) = 0x05FA0001;
+	// sysresetReq reset all ic hardword system
+	*((uint32_t*)0xE000ED0C) = 0x05FA0004;
+	while(1);
+}
 
 
 
 
-void iap_send_packget( unsigned char *data , unsigned int size)
+static void iap_send_packget( unsigned char *data , unsigned int size)
 {
 	int i;
 	protocol_encode(&iap_encoder,data,size);
@@ -151,7 +161,7 @@ void iap_send_packget( unsigned char *data , unsigned int size)
 
 
 
-void answer_ack_false(char error)
+static void answer_ack_false(char error)
 {
 	unsigned char data[4];
 	data[0] = PACKGET_ACK_ID;
@@ -160,7 +170,7 @@ void answer_ack_false(char error)
 	iap_send_packget(data , 3);
 }
 
-void answer_ack_restart(char error)
+static void answer_ack_restart(char error)
 {
 	unsigned char data[4];
 	data[0] = PACKGET_ACK_ID;
@@ -269,10 +279,6 @@ void iap_init_in_usb()
 	
 	iap_port_type |= PORT_USB_TYPE;
 }
-
-
-
-
 
 
 
