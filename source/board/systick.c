@@ -17,8 +17,13 @@ void systick_init(unsigned int freq)
 	SysTick->LOAD= (uint32_t)((SystemCoreClock/freq)-1);
 	systick_unit_pre_us = (u32)1000000 / freq ;
 	NVIC_SetPriority(SysTick_IRQn, CUSTOM_SYSTICK_IRQ_PRIORITY);
-	SysTick->CTRL|=0x02;
-	SysTick->CTRL|=0x01;
+	
+#if BOARD_USING_SYSTICK
+	SysTick->CTRL|=0x02; // start  irq
+	SysTick->CTRL|=0x01; // enable systick
+#else
+	
+#endif
 }
 
 void systick_deinit(void)
@@ -29,19 +34,51 @@ void systick_deinit(void)
 
 void SysTick_Handler(void)
 {
+#if BOARD_USING_SYSTICK
 	systick_us += systick_unit_pre_us;
-	
-	/*
-	if( systick_us >= 1000 ){
-		systick_ms ++;
-		systick_us =0;
-	}
-	*/
+#endif
 	if(TimingDelay > 0)
 	{
 		TimingDelay -= systick_unit_pre_us;
 	}
 }
+
+void systick_delay_us(u32 us)
+{
+#if (BOARD_USING_SYSTICK == 0)
+	SysTick->CTRL|=0x02;
+	SysTick->CTRL|=0x01;
+#endif
+	
+	TimingDelay = us;
+	while(TimingDelay > 0)__NOP();
+	
+#if (BOARD_USING_SYSTICK == 0)
+	SysTick->CTRL &= ~0x02;
+	SysTick->CTRL &= ~0x01;
+#endif
+}
+
+
+void systick_delay_ms(u32 ms)
+{
+#if (BOARD_USING_SYSTICK == 0)
+	SysTick->CTRL|=0x02;
+	SysTick->CTRL|=0x01;
+#endif
+	
+	TimingDelay = ms*1000;
+	while(TimingDelay > 0)__NOP();
+
+#if (BOARD_USING_SYSTICK == 0)
+	SysTick->CTRL &= ~0x02;
+	SysTick->CTRL &= ~0x01;
+#endif
+	
+}
+
+
+#if BOARD_USING_SYSTICK
 
 void systick_event()
 {
@@ -55,18 +92,6 @@ void systick_event()
 		systick_ms_overflow %= SYSTICK_OVERYFLOW_MAX;
 		systick_ms = 0;//0.0;
 	}
-}
-
-void systick_delay_us(u32 us)
-{
-	TimingDelay = us;
-	while(TimingDelay > 0)__NOP();
-}
-
-void systick_delay_ms(u32 ms)
-{
-	TimingDelay = ms*1000;
-	while(TimingDelay > 0)__NOP();
 }
 
 int systick_init_timer(systick_time_t *time_t, int ms)
@@ -104,5 +129,7 @@ unsigned int systick_get_ms()
 	systick_event();
 	return systick_ms;
 }
+
+#endif
 
 //End of File

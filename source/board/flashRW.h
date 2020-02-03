@@ -8,12 +8,10 @@
 #else
   #define FLASH_PAGE_SIZE    ((uint16_t)0x400)
 #endif
-#define CONFIG_ADDRESS (0x8010000-FLASH_PAGE_SIZE)
-#define CONFIG_SOTRE_SIZE FLASH_PAGE_SIZE
 
 
-int flash_read(volatile unsigned int * data , int size4x);
-int flash_write(volatile unsigned int * data , int size4x);
+int flash_read(unsigned int flash_addr, volatile unsigned int * data , int size4x);
+int flash_write(unsigned int flash_addr, volatile unsigned int * data , int size4x);
 
 
 

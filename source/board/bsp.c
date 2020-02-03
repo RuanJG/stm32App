@@ -273,7 +273,7 @@ volatile int console_cmd_index;
 static unsigned char * console_cmd_buffer;
 int console_cmd_buffer_size;
 
-void console_init(int type, void * pridata )
+void console_init(int type, void * pridata , unsigned char *cmdBuffer , int cmdBufferSize)
 {
 	if( type == CONSOLE_USB_TYPE  && BOARD_USING_USB == 1 ){
 		console_type |= type;
@@ -285,15 +285,8 @@ void console_init(int type, void * pridata )
 	}
 	
 	console_cmd_index = -1;
-	console_cmd_buffer = NULL;
-	console_cmd_buffer_size = 0;
-}
-
-int console_cmd_config( unsigned char *buffer , int size )
-{
-	console_cmd_index = -1;
-	console_cmd_buffer = buffer;
-	console_cmd_buffer_size = size;
+	console_cmd_buffer = cmdBuffer;
+	console_cmd_buffer_size = cmdBufferSize;
 }
 
 int console_cmd_parse( unsigned char data )
