@@ -13,5 +13,6 @@ int console_cmd_config( unsigned char *buffer , int size );
 int console_cmd_check();
 void bsp_stm32f10x_SystemInit (void);
 void bsp_stm32f10x_SetSysClock(void);
+void bsp_loopDelay_us( unsigned int us);
 
 #endif
