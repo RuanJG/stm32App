@@ -597,6 +597,13 @@ void victor8165_even()
 
 #if USING_TONGHUI_TH963_VMETER
 
+// cmd 'MEAS:VOLT:DC? 100\n' -> '2.45693330E-04\r\n'  or  '-2.45693330E-04\r\n' 
+
+or 
+	
+// cmd 'conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 3\n' ,  'read?;*trg' or 'init;fetc?;*trg\n'
+// cmd 'abort'
+
 systick_time_t th963_timer;
 
 typedef struct TH963_Meter {
@@ -673,12 +680,25 @@ int TH963_cmd_even(TH963_Meter_t * th963, char * cmd , int timeoutMs , int waitR
 		case 0:  // send cmd
 			TH963_cmd_reset( th963 );
 			Uart_Put(th963->uart, (unsigned char*) cmd, strlen(cmd));
-		  th963->cmdStep++;
-			systick_init_timer( &th963_timer, 500);
+			th963->cmdStep++;
+			systick_init_timer( &th963_timer, timeoutMs);
 		break;
 		
 		case 1: // verify cmd 
 			
+			if( waitResult == 1 ){
+				// if has result , no  wait for cmd error msg
+				th963->cmdStep++;
+				break;
+			}
+			
+			if( 1 == TH963_try_read_one_msg( th963 ) )
+			{
+				PC_LOGE("TH963_cmd_even: error>%s",th963->buffer);
+				th963->cmdStep = -1;
+			}
+		
+			#if 0  //echo verify cmd
 			if( 1 == TH963_try_read_one_msg( th963 ) )
 			{
 				if( 0 == strcmp( th963->buffer , cmd ) )
@@ -692,23 +712,30 @@ int TH963_cmd_even(TH963_Meter_t * th963, char * cmd , int timeoutMs , int waitR
 				PC_LOGE("TH963_cmd_even: verify cmd timeout !");
 				th963->cmdStep = -1;
 			}
+			#endif 
+			
+			if( 1 == systick_check_timer( &th963_timer ) ){
+				th963->cmdStep++;
+			}
 
 		break;
 			
 		case 2: //get result
 			if( waitResult == 0 ){
 				th963->cmdStep++;
-			}else{
-				if( 1 == TH963_try_read_one_msg( th963 ) )
-				{
-					strcpy( th963->cmdRes , th963->buffer);
-					th963->cmdStep++;
-				}
-				if( 1 == systick_check_timer( &th963_timer ) ){
-					PC_LOGE("TH963_cmd_even: verify cmd timeout !");
-					th963->cmdStep = -1;
-				}
+				break;
 			}
+				
+			if( 1 == TH963_try_read_one_msg( th963 ) )
+			{
+				strcpy( th963->cmdRes , th963->buffer);
+				th963->cmdStep++;
+			}
+			if( 1 == systick_check_timer( &th963_timer ) ){
+				PC_LOGE("TH963_cmd_even: verify cmd timeout !");
+				th963->cmdStep = -1;
+			}
+				
 		break;
 			
 		case 3:
@@ -769,8 +796,8 @@ int TH963_cmd_sync(TH963_Meter_t * th963, char * cmd , int delayMs, int has_resu
 
 float TH963_measure( TH963_Meter_t * th963 )
 {
-	if( 1 == TH963_cmd_sync(th963, ":MEASure:VOLTage:DC" , 300, 1 , 3) ){
-		sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);
+	if( 1 == TH963_cmd_sync(th963, "MEAS:VOLT:DC? 100\n" , 500, 1 , 3) ){
+		sscanf((const char*)th963->buffer , "%e\r\n",  &th963->measureVal);
 		return th963->measureVal;
 	}else{
 		return 0;
@@ -783,10 +810,36 @@ void TH963_even(TH963_Meter_t * th963)
 	unsigned char data[4];
 	
 	if( th963->started != 1 ) return;
+//DCV,1.00000000E+02,1.00000000E-03<\r><\n>
 
 	switch( th963->initStep )
 	{
 		case 0:
+			value = TH963_cmd_even( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 300, 0);
+		  if( value == 1 ){
+				th963->initStep++;
+			}
+			if( value == -1 ){
+				TH963_cmd_reset(th963);
+			}
+		break;
+			
+		case 1:
+			value = TH963_cmd_even( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 300, 0);
+		  if( value == 1 ){
+				sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);
+				th963->updated = 1;
+				memcpy( data, (unsigned char*) &th963->measureVal , 4 );
+				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
+					PC_LOGE("TH963_even: send data to PC error");
+				}
+			}
+			if( value == -1 ){
+				TH963_cmd_reset(th963);
+			}
+		break;
+			
+		case 2:
 			value = TH963_cmd_even( th963, ":MEASure:VOLTage:DC", 300, 1 );
 		  if( value == 1 ){
 				sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);

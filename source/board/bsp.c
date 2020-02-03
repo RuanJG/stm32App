@@ -353,7 +353,14 @@ int fputc(int ch, FILE *f)
 
 
 
+void bsp_loopDelay_us( unsigned int us)
+{
+	volatile int i;
+	
+	i = 1.25 * us;
 
+	while( i-- > 0) __NOP();
+}
 
 
 

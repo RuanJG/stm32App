@@ -71,11 +71,7 @@ void _memset(void *dst, unsigned char data, unsigned int n)
 
 void iap_app_delayus(int us)
 {
-	volatile int i;
-	
-	i = IPS_US * us;
-
-	while( i-- > 0) __NOP();
+	bsp_loopDelay_us(us);
 	
 }
 

@@ -12,5 +12,6 @@ void console_init(int type, void * pridata , unsigned char *cmdBuffer , int cmdB
 int console_cmd_check();
 void bsp_stm32f10x_SystemInit (void);
 void bsp_stm32f10x_SetSysClock(void);
+void bsp_loopDelay_us( unsigned int us);
 
 #endif
