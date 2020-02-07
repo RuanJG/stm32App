@@ -7,7 +7,7 @@
 #include "systick.h"
 #include "stdio.h"
 
-
+#define SW_SAMPLES_COUNT 10
 typedef void (*SwitchHandler) (void);
 
 struct switcher {
@@ -18,7 +18,9 @@ struct switcher {
 	SwitchHandler press_handler;
 	SwitchHandler release_handler;
 	int tolerance;
-
+	
+	unsigned char samples[SW_SAMPLES_COUNT];
+	unsigned char samples_index;
 	unsigned short counter;
 	unsigned short sum;
 	unsigned short MAXCOUNT;

@@ -190,8 +190,8 @@ void Uart_USB_SWJ_init()
 	//swd
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
-	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
-	console_init( CONSOLE_USB_TYPE ,NULL );
+	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART , NULL, 0);
+	//console_init( CONSOLE_USB_TYPE ,NULL );
 	
 }
 
@@ -264,8 +264,8 @@ void relay_init()
 
 
 
-#define SW_INTERVAL_COUNT  40  // SW_INTERVAL_MS 检查一次GPIO口， SW_INTERVAL_COUNT次后发出按键事件, 用作过滤
-#define SW_INTERVAL_TOLERANCE 10 // 30%
+#define SW_INTERVAL_COUNT  20  // SW_INTERVAL_MS 检查一次GPIO口， SW_INTERVAL_COUNT次后发出按键事件, 用作过滤
+#define SW_INTERVAL_TOLERANCE 7 // 50%
 #define SW_INTERVAL_MS 5
 systick_time_t sw_timer;
 volatile struct switcher startButton;
@@ -599,7 +599,7 @@ void victor8165_even()
 
 // cmd 'MEAS:VOLT:DC? 100\n' -> '2.45693330E-04\r\n'  or  '-2.45693330E-04\r\n' 
 
-or 
+//or 
 	
 // cmd 'conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 3\n' ,  'read?;*trg' or 'init;fetc?;*trg\n'
 // cmd 'abort'
@@ -774,6 +774,67 @@ int TH963_start( TH963_Meter_t * th963 , int en )
 	return 1;
 }
 
+
+void TH963_even(TH963_Meter_t * th963)
+{
+	int value;
+	unsigned char data[4];
+	
+	if( th963->started != 1 ) return;
+
+	// currently I just use measure cmd
+	th963->initStep = 2; 
+	
+	switch( th963->initStep )
+	{
+		case 0:
+			value = TH963_cmd_even( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 300, 0);
+		  if( value == 1 ){
+				th963->initStep++;
+			}
+			if( value == -1 ){
+				TH963_cmd_reset(th963);
+			}
+		break;
+			
+		case 1:
+			value = TH963_cmd_even( th963, "init;read;trig\n", 300, 1);
+		  if( value == 1 ){
+				sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);
+				th963->updated = 1;
+				memcpy( data, (unsigned char*) &th963->measureVal , 4 );
+				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
+					PC_LOGE("TH963_even: send data to PC error");
+				}
+			}
+			if( value == -1 ){
+				TH963_cmd_reset(th963);
+			}
+		break;
+			
+		case 2:
+			value = TH963_cmd_even( th963, "MEAS:VOLT:DC? 100\n", 300, 1 );
+		  if( value == 1 ){
+				sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);
+				th963->updated = 1;
+				memcpy( data, (unsigned char*) &th963->measureVal , 4 );
+				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
+					PC_LOGE("TH963_even: send data to PC error");
+				}
+			}
+			if( value == -1 ){
+				TH963_cmd_reset(th963);
+			}
+		break;
+			
+		default:
+			
+		break;
+	}
+	
+}
+
+
 int TH963_cmd_sync(TH963_Meter_t * th963, char * cmd , int delayMs, int has_result , int retryTimes)
 {
 	volatile int val;
@@ -802,63 +863,6 @@ float TH963_measure( TH963_Meter_t * th963 )
 	}else{
 		return 0;
 	}
-}
-
-void TH963_even(TH963_Meter_t * th963)
-{
-	int value;
-	unsigned char data[4];
-	
-	if( th963->started != 1 ) return;
-//DCV,1.00000000E+02,1.00000000E-03<\r><\n>
-
-	switch( th963->initStep )
-	{
-		case 0:
-			value = TH963_cmd_even( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 300, 0);
-		  if( value == 1 ){
-				th963->initStep++;
-			}
-			if( value == -1 ){
-				TH963_cmd_reset(th963);
-			}
-		break;
-			
-		case 1:
-			value = TH963_cmd_even( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 300, 0);
-		  if( value == 1 ){
-				sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);
-				th963->updated = 1;
-				memcpy( data, (unsigned char*) &th963->measureVal , 4 );
-				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
-					PC_LOGE("TH963_even: send data to PC error");
-				}
-			}
-			if( value == -1 ){
-				TH963_cmd_reset(th963);
-			}
-		break;
-			
-		case 2:
-			value = TH963_cmd_even( th963, ":MEASure:VOLTage:DC", 300, 1 );
-		  if( value == 1 ){
-				sscanf((const char*)th963->buffer , "%e\n",  &th963->measureVal);
-				th963->updated = 1;
-				memcpy( data, (unsigned char*) &th963->measureVal , 4 );
-				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
-					PC_LOGE("TH963_even: send data to PC error");
-				}
-			}
-			if( value == -1 ){
-				TH963_cmd_reset(th963);
-			}
-		break;
-			
-		default:
-			
-		break;
-	}
-	
 }
 
 #endif
