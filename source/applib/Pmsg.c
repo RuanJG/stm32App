@@ -76,8 +76,8 @@ int PMSG_receive_msg( PMSG_t *pmsg )
 
 int PMSG_send_msg_no_Tag( PMSG_t *pmsg, unsigned char *data, int len)
 {
-	if( 0 == protocol_encode( &pmsg->decoder, data, len) ) return 0;
-	PMSG_send_bytes( pmsg, pmsg->decoder.data, pmsg->decoder.len );
+	if( 0 == protocol_encode( &pmsg->encoder, data, len) ) return 0;
+	PMSG_send_bytes( pmsg, pmsg->encoder.data, pmsg->encoder.len );
 	return 1;
 }
 

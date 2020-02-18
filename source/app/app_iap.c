@@ -85,8 +85,10 @@ void iap_jump_to_app()
 	bsp_deinit();
 	
 	// if flash has programed , reset 
-	if( iap_has_flashed_data == 1 )
+	if( iap_has_flashed_data == 1 ){
+		clean_iap_tag();
 		iap_reset();
+	}
 	
 	/* If Program has been written */
 	if ( is_app_flashed())
@@ -110,6 +112,7 @@ void iap_jump_to_app_or_deamon()
 
 	if ( is_app_flashed())
 	{	
+		clean_iap_tag();
 		JumpAddress = *(__IO uint32_t*) (IAP_APP_ADDRESS + 4);
 		Jump_To_Application = (iapFunction) JumpAddress;
 		__set_MSP(*(__IO uint32_t*) IAP_APP_ADDRESS);
@@ -435,10 +438,8 @@ void iap_app_uart_init()
 
 void iap_app_init(void *pridata, int port_type)
 {
-	if( 0 == is_iap_tag_set() ){
+	if( 0 == is_iap_tag_set() && is_app_flashed() ){
 		iap_jump_to_app();
-	}else{	
-		clean_iap_tag();
 	}
 	
 	protocol_init(&encoder);

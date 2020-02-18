@@ -981,7 +981,7 @@ void app_init()
 	iap_init_in_uart( IAP_UART );
 	#endif
 #endif
-	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART );
+	console_init( CONSOLE_UART_TYPE ,CONSOLE_UART , NULL, 0 );
 	//console_init( CONSOLE_USB_TYPE ,NULL );
 	
 	PMSG_init_uart( &PC_pmsg, PC_UART, PC_msg_handler);
@@ -991,7 +991,7 @@ void app_init()
 		while(1);
 	}
 	
-	PC_LOGI("Init OK");
+	PC_LOGI("LED Board Init OK");
 }
 
 
