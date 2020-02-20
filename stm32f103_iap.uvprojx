@@ -483,11 +483,6 @@
               <FilePath>.\source\app\app_STUSB4500_program_Board.c</FilePath>
             </File>
             <File>
-              <FileName>app_CSWL_Control_Board_V2.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\source\app\app_CSWL_Control_Board_V2.c</FilePath>
-            </File>
-            <File>
               <FileName>app_swd_programer.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\source\app\app_swd_programer.c</FilePath>

@@ -14,16 +14,25 @@
 
 #if BOARD_CSWL_CONTROL_BOARD
 
+
+
 // choise one version for build
-#define CSWL_CONTROL_BOARD_V1 1
-#define CSWL_CONTROL_BOARD_V2 0   
+#define CSWL_CONTROL_BOARD_V1 0
+#define CSWL_CONTROL_BOARD_V2 1  
+
 
 
 volatile int debug_en = 1;
+#if 0
 #define _LOGW(X...) if( debug_en ) { printf("Warn: %s -> ",__FUNCTION__); printf(X);}
 #define _LOGE(X...) printf("ERROR: %s -> ",__FUNCTION__); printf(X)
+#else
+#define _LOGW(X...) {}
+#define _LOGE(X...) {}
+#endif
 
-
+	
+	
 #define PC_UART &Uart1
 #define LED_UART &Uart4
 #define VMETER_UART &Uart2
@@ -32,12 +41,8 @@ volatile int debug_en = 1;
 
 
 #define USING_CMD_EVEN  0
-#define USING_VICTOR8165_AS_VMETER 1
 #define USING_TONGHUI_TH963_VMETER 1
 
-#define VMETER_TYPE_8165 1
-#define VMETER_TYPE_TH963 2
-volatile int vmeter_type = VMETER_TYPE_TH963;
 
 
 PMSG_t PC_pmsg;
@@ -53,7 +58,7 @@ miniMeter_t Ameter;
 #define PC_TAG_LOGI  (PMSG_TAG_LOG|0x2)
 
 char logbuffer[ PROTOCOL_MAX_PACKET_SIZE ];
-#define PC_LOG(T, X...) { snprintf( logbuffer, sizeof( logbuffer )-1, X); logbuffer[PROTOCOL_MAX_PACKET_SIZE-1]=0; PMSG_send_msg( &PC_pmsg , T , (unsigned char*)logbuffer, strlen(logbuffer) );}
+#define PC_LOG(T, X...) { snprintf( logbuffer, sizeof(logbuffer)-1, X); logbuffer[strlen(logbuffer)]=0; PMSG_send_msg( &PC_pmsg , T , (unsigned char*)logbuffer, strlen(logbuffer) );}
 #define PC_LOGI(X...) {PC_LOG( PC_TAG_LOGI , X);_LOGW(X);}
 #define PC_LOGE(X...) {PC_LOG( PC_TAG_LOGE , X);_LOGE(X);}
 
@@ -540,147 +545,6 @@ void Vmeter_even()
 
 
 
-#if USING_VICTOR8165_AS_VMETER
-
-
-#define VICTOR8165_BUFFSIZE 31
-
-Uart_t *victor8165_uart;
-volatile int victor8165_step;
-volatile int victor8165_received_result;
-volatile int victor8165_buffer_index;
-volatile int victor8165_updated;
-volatile float victor8165_value;
-volatile int victor8165_en;
-char victor8165_buffer[VICTOR8165_BUFFSIZE+1];
-systick_time_t victor8165_timer;
-
-
-
-void victor8165_send_cmd( char* cmd)
-{
-	Uart_Put( victor8165_uart, (unsigned char *)cmd,  strlen(cmd) );
-}
-
-int victor8165_check( float *value)
-{
-	if( victor8165_updated == 1 ){
-		*value = victor8165_value;
-		victor8165_updated = 0;
-		return 1;
-	}
-	return 0;
-}
-
-void victor8165_start()
-{
-	victor8165_step = 0;
-	victor8165_buffer_index = 0;
-	victor8165_received_result = 0;
-	victor8165_updated= 0;
-	victor8165_en =1;
-}
-
-void victor8165_stop()
-{
-	victor8165_updated= 0;
-	victor8165_en =0;
-}
-
-void victor8165_init( Uart_t *uart )
-{
-	victor8165_uart = uart;
-	victor8165_step = 0;
-	victor8165_buffer_index = 0;
-	victor8165_received_result = 0;
-	victor8165_updated= 0;
-	victor8165_en = 0;
-}
-
-void victor8165_even()
-{
-	int i,len;
-	unsigned char data[4];
-	
-	for( i=0; i< VICTOR8165_BUFFSIZE; i++ ){
-		if( 1== Uart_Get( victor8165_uart, (victor8165_buffer + victor8165_buffer_index) , 1) ){
-			if( victor8165_buffer[victor8165_buffer_index] == 0x0A ){
-				victor8165_received_result = victor8165_buffer_index+1;
-				victor8165_buffer[victor8165_received_result] = 0; // set string end tag
-				victor8165_buffer_index = 0;
-				break;
-			}else{
-				victor8165_buffer_index ++;
-				if( victor8165_buffer_index >= VICTOR8165_BUFFSIZE ) victor8165_buffer_index = 0;
-			}
-		}else{
-			break;
-		}
-	}
-	
-	if( victor8165_en == 0 ) return; 
-	
-	switch (victor8165_step)
-	{
-		case 0: victor8165_send_cmd("VDC\n"); victor8165_step++; systick_init_timer(&victor8165_timer, 400); break;
-		case 1: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("RATE M\n");victor8165_step++;}break;
-		case 2: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("RANGE 3\n");victor8165_step++;}break;
-		case 3: if(systick_check_timer(&victor8165_timer)){victor8165_send_cmd("FUNC1?\n");victor8165_step++;systick_init_timer(&victor8165_timer, 400);}break;
-		case 4: 
-				if( victor8165_received_result > 0 )
-				{
-						if( victor8165_received_result == strlen("VDC\n") && 0 == strncmp("VDC\n",(char*)victor8165_buffer , victor8165_received_result) ){
-							victor8165_step++; 
-						}else{
-							victor8165_step = 0;
-							PC_LOGE("victor8165_even: Init Error");
-						}
-						victor8165_received_result=0;
-				}else{ 
-				     if(systick_check_timer(&victor8165_timer)){
-							 victor8165_step = 0;
-							 PC_LOGE("victor8165_even: Init timeout");
-						 }  
-				}; 
-	  break;	
-		case 5: systick_init_timer(&victor8165_timer, 300);victor8165_send_cmd("MEAS1?\n");victor8165_step++;break;
-		case 6:
-			if( victor8165_received_result > 2 && 1 == sscanf((const char*)victor8165_buffer , "%e;\n",  &victor8165_value) ){
-				//sscanf((const char*)victor8165_buffer , "%e;\n",  &victor8165_value);
-				victor8165_updated = 1;
-				memcpy( data, (unsigned char*) &victor8165_value , 4 );
-				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
-					PC_LOGE("victor8165_even: send data to PC error");
-				}
-				victor8165_received_result = 0;
-				//no delay
-				//victor8165_send_cmd("MEAS1?\n");
-			}
-			if(systick_check_timer(&victor8165_timer)){
-				if( victor8165_updated == 0) {
-					PC_LOGE("victor8165_even: MEAS1 cmd timeout");
-					victor8165_start();
-				}else{
-					victor8165_send_cmd("MEAS1?\n");
-					victor8165_buffer_index = 0;
-					victor8165_received_result = 0;
-					victor8165_updated= 0;
-				}
-			}
-		break;
-			
-		default:
-			PC_LOGE("victor8165_even: Something error!");
-		break;
-		
-	}
-}
-
-
-#endif
-
-
-
 
 #if USING_TONGHUI_TH963_VMETER
 
@@ -691,43 +555,37 @@ void victor8165_even()
 // cmd 'conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 3\n' ,  'read?;*trg' or 'init;fetc?;*trg\n'
 // cmd 'abort'
 
-systick_time_t th963_timer;
+//*CLS 清除错误信息
+//:SYSTem:ERROr?  读错误信息  -> 0,"No error";\n    或  -113,"Undefined header"\n  （ 8165 支持， th963 不支持,因它直接反回cmd错误信息）
+//*RST 回复到开机状态 
+//:LOCal ( 8165 no support , th963 support )
+
+#define TH963_BUFFER_SIZE 32
 
 typedef struct TH963_Meter {
+	systick_time_t timer;
 	Uart_t *uart;
 	volatile float measureVal;
 	volatile unsigned char updated;
 	volatile unsigned char started;
-	char cmd[32];
-	char cmdRes[32];
+	char cmdRes[TH963_BUFFER_SIZE];
 	volatile int cmdStep;
 	volatile int initStep;
-	char buffer[32];
-	volatile int bufferIndex;
+	volatile int cmdbufferIndex;
 }TH963_Meter_t;
-
-
-TH963_Meter_t Vmeter_th963;
 
 
 void TH963_cmd_reset(TH963_Meter_t * th963)
 {
-	th963->bufferIndex = 0;
-	th963->cmd[0]=0;
+	th963->cmdbufferIndex = 0;
 	th963->cmdRes[0] =0;
 	th963->cmdStep = 0;
-}
-
-void TH963_clear(TH963_Meter_t * th963)
-{
-	th963->started = 0;
-	th963->updated = 0;
-	th963->initStep = 0;
-	TH963_cmd_reset( th963 );
 	Uart_Clear_Rx( th963->uart );
 }
 
-int TH963_try_read_one_msg( TH963_Meter_t * th963 )
+// get a string : return 1 , result store in th963->cmdRes
+// otherwise : return 0
+int TH963_cmd_read_string( TH963_Meter_t * th963 )
 {
 	volatile unsigned char data;
 	
@@ -735,16 +593,16 @@ int TH963_try_read_one_msg( TH963_Meter_t * th963 )
 	{
 		if( 1 == Uart_Get( th963->uart, &data ,1 ))
 		{
-			if( th963->bufferIndex >= (sizeof( th963->buffer ) -2) )
+			if( th963->cmdbufferIndex >= (sizeof( th963->cmdRes ) -2) )
 			{
-				th963->bufferIndex = 0;
-				PC_LOGE("TH963_try_read_one_msg: overflow!");
+				th963->cmdbufferIndex = 0;
+				PC_LOGE("TH963_cmd_read_string: overflow!");
 			}
-			th963->buffer[ th963->bufferIndex++ ] = data;
+			th963->cmdRes[ th963->cmdbufferIndex++ ] = data;
 			if( data == '\n' )
 			{
-				th963->buffer[ th963->bufferIndex++ ] = 0;
-				th963->bufferIndex = 0;
+				th963->cmdRes[ th963->cmdbufferIndex++ ] = 0;
+				th963->cmdbufferIndex = 0;
 				return 1;
 			}
 		}else{
@@ -753,130 +611,144 @@ int TH963_try_read_one_msg( TH963_Meter_t * th963 )
 	}
 }	
 
-int TH963_cmd_even(TH963_Meter_t * th963, char * cmd , int timeoutMs , int waitResult)
+
+//0 : waiting for cmd runing
+//1 : finish , result in th963->cmdRes 
+//-1 : error / failed , result in th963->cmdRes 
+int TH963_cmd_even(TH963_Meter_t * th963, char * cmd , int timeoutMs , int waitResult , int waitTimeout)
 {
-	int cnt;
+	int rest;
 	volatile unsigned char data;
 	
+	rest = 0;
+	
 	switch( th963->cmdStep )
-	{
-		case -1:
-			//error
-			TH963_cmd_reset( th963 );
-		break;
-		
+	{		
 		case 0:  // send cmd
 			TH963_cmd_reset( th963 );
 			Uart_Put(th963->uart, (unsigned char*) cmd, strlen(cmd));
 			th963->cmdStep++;
-			systick_init_timer( &th963_timer, timeoutMs);
+			systick_init_timer( &th963->timer, timeoutMs);
 		break;
 		
 		case 1: // verify cmd 
-			
+			// if has result , no  wait for cmd error msg
 			if( waitResult == 1 ){
-				// if has result , no  wait for cmd error msg
 				th963->cmdStep++;
 				break;
 			}
 			
-			if( 1 == TH963_try_read_one_msg( th963 ) )
-			{
-				PC_LOGE("TH963_cmd_even: error>%s",th963->buffer);
-				th963->cmdStep = -1;
+			// if any string send by meter , it should be the error msg
+			// error string store in th963->cmdRes
+			if( 1 == TH963_cmd_read_string( th963 ) ){
+				rest = -1;
+				break;
 			}
 			
-			if( 1 == systick_check_timer( &th963_timer ) ){
-				th963->cmdStep = 3;
+			//if not require reply string , timeout meant ok;
+			if( 1 == systick_check_timer( &th963->timer ) ){
+				rest = 1;
+				break;
 			}
-		
-			#if 0  //echo verify cmd
-			if( 1 == TH963_try_read_one_msg( th963 ) )
-			{
-				if( 0 == strcmp( th963->buffer , cmd ) )
-				{
-					//th963->bufferIndex = 0;
-					th963->cmdStep++;
-					systick_init_timer( &th963_timer, timeoutMs);
-				}
-			}
-			if( 1 == systick_check_timer( &th963_timer ) ){
-				PC_LOGE("TH963_cmd_even: verify cmd timeout !");
-				th963->cmdStep = -1;
-			}
-			
-			if( 1 == systick_check_timer( &th963_timer ) ){
-				th963->cmdStep++;
-			}
-			#endif 
-
 		break;
 			
 		case 2: //get result
-			if( waitResult == 0 ){
-				th963->cmdStep++;
-				break;
-			}
-				
-			if( 1 == TH963_try_read_one_msg( th963 ) )
+			if( 1 == TH963_cmd_read_string( th963 ) )
 			{
-				strcpy( th963->cmdRes , th963->buffer);
-				if( strncmp(th963->buffer, "Error 5", 7) == 0){
+				#if 0 // th963 will reply the Error imediaterily
+				if( strncmp(th963->cmdRes, "Error 5", 7) == 0){
 					PC_LOGE("TH963_cmd_even: Unknow cmd  !");
-					th963->cmdStep = -1;
-				}else{
+					rest = -1;
+					break;
+				}
+				#endif
+				
+				if( waitTimeout != 0 && 0 == systick_check_timer( &th963->timer ) ) {
 					th963->cmdStep++;
+					break;
+				}else{
+					rest = 1;
+					break;
 				}
 			}
-			if( 1 == systick_check_timer( &th963_timer ) ){
-				PC_LOGE("TH963_cmd_even: measure timeout !");
-				th963->cmdStep = -1;
+			
+			if( 1 == systick_check_timer( &th963->timer ) ){
+				PC_LOGE("TH963_cmd_even: cmd timeout !");
+				rest = -1;
+				break;
 			}
-				
 		break;
 			
-		case 3:
-			// finish
-			TH963_cmd_reset( th963 );
+			
+		case 3: // some cmd need time to delay , this step just like for interval cmd loop
+			if( 1 == systick_check_timer( &th963->timer ) ){
+				rest = 1;
+			}
 		break;
 		
 		default:
-			
+			PC_LOGE("TH963_cmd_even: error step!");
 		break;
 	}
 	
-	if( th963->cmdStep == -1 ) return -1;
-	if( th963->cmdStep == 3 ) return 1;
+	if( rest != 0 )
+		th963->cmdStep = 0;
 	
-	return 0;
+	return rest;
+}
+
+int TH963_cmd_sync(TH963_Meter_t * th963, char * cmd , int delayMs, int has_result)
+{
+	int val = 0;
+	
+	while( 1 ){
+		val = TH963_cmd_even( th963, cmd , delayMs, has_result , 0) ;
+		if( val  != 0 ) break;
+	}
+	
+	return val;
 }
 
 
-systick_time_t th963_delay_timer;
-int TH963_cmd_sync(TH963_Meter_t * th963, char * cmd , int delayMs, int has_result , int retryTimes);
+
+TH963_Meter_t Vmeter_th963;
+
+
+void TH963_clear(TH963_Meter_t * th963)
+{
+	th963->started = 0;
+	th963->updated = 0;
+	th963->initStep = 0;
+	TH963_cmd_reset( th963 );
+}
 
 int TH963_init(TH963_Meter_t * th963, Uart_t *uart_p )
 {
 	th963->uart = uart_p;
 	TH963_clear(th963);
-	systick_init_timer( &th963_delay_timer, 200);
 	return 0;
 }
 
 int TH963_start( TH963_Meter_t * th963 , int en )
 {
 	if( th963->started == 0 && en ==1 ){
+		
 		TH963_clear( th963 );
-		//if( 1 != TH963_cmd_sync( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 1000, 0, 1 ) ){
-		//	PC_LOGE("TH963 init error\n");
-		//};
+		
+		// flush the unknow bytes in meter rs232 pipe
+		TH963_cmd_sync( th963, "\n", 200, 0) ;
+		
+		if( 1 != TH963_cmd_sync( th963, "*RST\n", 500, 0) ){
+			PC_LOGE("TH963 RST error : %s\n",th963->cmdRes);
+		}
 	}
+	
 	th963->started = en;
 	
 	if( th963->started == 0 ){
-		if( 1 != TH963_cmd_sync( th963, ":LOCal\n", 100, 0, 1 ) ){
-			PC_LOGE("TH963 local error\n");
-		};
+		//if( 1 != TH963_cmd_sync( th963, ":LOCal\n", 100, 0, 1 ) ){
+		//	PC_LOGE("TH963 local error\n");
+		//};
 		PC_LOGI("TH963 Vmeter stop\n");
 	}
 	if( th963->started == 1 ) {
@@ -889,106 +761,42 @@ int TH963_start( TH963_Meter_t * th963 , int en )
 
 void TH963_even(TH963_Meter_t * th963)
 {
-	int value;
+	int value, i;
 	unsigned char data[4];
 	
 	if( th963->started != 1 ) return;
 	
-	// if( 0 == systick_check_timer( &th963_delay_timer ) ) return;
-
-	// currently I just use measure cmd
-	th963->initStep = 2; 
+	value = TH963_cmd_even( th963, ":MEASure:VOLTage:DC? 100\n", 1000, 1 , 0); // can't be less than 800ms
 	
-	switch( th963->initStep )
-	{
-		case 0:
-			value = TH963_cmd_even( th963, "conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1\n", 300, 0);
-		  if( value == 1 ){
-				th963->initStep++;
-			}
-			if( value == -1 ){
-				TH963_cmd_reset(th963);
-			}
-		break;
-			
-		case 1:
-			value = TH963_cmd_even( th963, "init;read;trig\n", 300, 1);
-		  if( value == 1 ){
-				sscanf((const char*)th963->buffer , "%e\n\r",  &th963->measureVal);
-				th963->updated = 1;
-				memcpy( data, (unsigned char*) &th963->measureVal , 4 );
-				if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
-					PC_LOGE("TH963_even: send data to PC error");
-				}
-				TH963_cmd_reset(th963);
-			}
-			if( value == -1 ){
-				TH963_cmd_reset(th963);
-			}
-		break;
-			
-		case 2:
-			//conf:volt:dc 100;:trig:sour bus;:trig:coun 1;:samp:coun 1;:*trg;:read?\n
-		  //:MEASure:VOLTage:DC? 100\n
-		value = TH963_cmd_even( th963, ":MEASure:VOLTage:DC? 100\n", 1500, 1 ); // can't be less than 800ms
-		  if( value == 1 ){
-				//PC_LOGI("th963>%s",th963->buffer);
-				if( 1 == sscanf((const char*)th963->buffer , "%e\r\n",  &th963->measureVal) ){
-					PC_LOGI("th963>%f",th963->measureVal);
-					th963->updated = 1;
-					memcpy( data, (unsigned char*) &th963->measureVal , 4 );
-					if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
-						PC_LOGE("TH963_even: send data to PC error");
-					}
-				}else{
-					PC_LOGE("TH963_even:data error>%s",th963->buffer);
-				}
-				TH963_cmd_reset(th963);
-			}
-			if( value == -1 ){
-				TH963_cmd_reset(th963);
-			}
-		break;
-			
-		default:
-			
-		break;
-	}
-	
-}
-
-
-int TH963_cmd_sync(TH963_Meter_t * th963, char * cmd , int delayMs, int has_result , int retryTimes)
-{
-	volatile int val;
-	int i;
-	
-	
-	for( i=0; i< retryTimes; i++)
-	{
-		TH963_cmd_reset(th963);
-		while( 1 ){
-			val = TH963_cmd_even( th963, cmd , delayMs, has_result ) ;
-			if( val  != 0 ) break;
+	if( value == 1 ){
+		//victor 8165 : "%e;\n"
+		//TH963 :  "%e\r\n"
+		i = strlen((const char*)th963->cmdRes);
+		if( i > 2 ) {
+			th963->cmdRes[i-1] = 0;
+			th963->cmdRes[i-2] = 0;
 		}
-		if( val == 1 ){
-			break;
+		if( 1 == sscanf((const char*)th963->cmdRes , "%e",  &th963->measureVal) ){
+			//PC_LOGI("th963>%f",th963->measureVal);
+			th963->updated = 1;
+			memcpy( data, (unsigned char*) &th963->measureVal , 4 );
+			if( 0 == PMSG_send_msg( &PC_pmsg , PC_TAG_DATA_VMETER, data , sizeof(data) ) ){
+				PC_LOGE("TH963_even: send data to PC error");
+			}
+		}else{
+			PC_LOGE("TH963_even: cmd error>%s",th963->cmdRes);
 		}
 	}
-	
-	if( val == 1 ) return 1;
-	return 0;
-}
-
-float TH963_measure( TH963_Meter_t * th963 )
-{
-	if( 1 == TH963_cmd_sync(th963, "MEAS:VOLT:DC? 100\n" , 500, 1 , 3) ){
-		sscanf((const char*)th963->buffer , "%e\r\n",  &th963->measureVal);
-		return th963->measureVal;
-	}else{
-		return 0;
+	if( value == -1 ){
+		PC_LOGI("TH963 cmd failed. Reset...\n");
+		if( 1 != TH963_cmd_sync( th963, "*RST\n", 1000, 0) ){
+			PC_LOGE("TH963 RST error\n");
+		};
 	}
 }
+
+
+
 
 #endif
 
@@ -1131,25 +939,13 @@ void PC_msg_handler(PMSG_msg_t msg)
 			
 		case PC_TAG_CMD_VMETER_READ:
 			if( msg.data_len == 1 ){
-				if( (msg.data[0] & 0xf0) != 0 ){
-					vmeter_type = ( msg.data[0] & 0x0f );
-				}
-				#if USING_VICTOR8165_AS_VMETER
-				if( vmeter_type == VMETER_TYPE_8165 )
-				{
-					if( (msg.data[0] & 0xf0) == 0 ){
-						victor8165_stop();
-					}else{
-						victor8165_start();
-					}	
-				}
-				#endif
+				//msg.data[0] == 1 start vmeter  victor 8164 
+				//msg.data[0] == 2 start vmeter  th963
+				//msg.data[0] == 0 stop
 				#if USING_TONGHUI_TH963_VMETER
-				if( vmeter_type == VMETER_TYPE_TH963 )
-				{
-					if( 0 == TH963_start( &Vmeter_th963,(msg.data[0]>>4) ) ){
-						PC_LOGE("PC_TAG_CMD_VMETER_READ: start meter failed");
-					}
+				value = msg.data[0]==0 ? 0:1 ;
+				if( 0 == TH963_start( &Vmeter_th963 , value ) ){
+					PC_LOGE("PC_TAG_CMD_VMETER_READ: start meter failed");
 				}
 				#endif
 			}else{
@@ -1240,9 +1036,7 @@ void app_init()
 	switch_init();
 	Ameter_init();
 	
-#if USING_VICTOR8165_AS_VMETER
-	victor8165_init( VMETER_UART );
-#endif
+
 #if USING_TONGHUI_TH963_VMETER
 	TH963_init( &Vmeter_th963 , VMETER_UART );
 #endif
@@ -1288,18 +1082,10 @@ void app_event()
 		PMSG_even( &PC_pmsg );
 		PMSG_even( &LED_pmsg );
 	}
-	
-	if( vmeter_type == VMETER_TYPE_8165 ){
-#if USING_VICTOR8165_AS_VMETER
-		victor8165_even();
-#endif
-	}else if( vmeter_type == VMETER_TYPE_TH963 ){
+
 #if USING_TONGHUI_TH963_VMETER
 		TH963_even(&Vmeter_th963);
 #endif
-	}else{
-		
-	}
 	
 }
 

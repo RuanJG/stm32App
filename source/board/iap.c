@@ -41,7 +41,7 @@ int is_app_flashed()
 	
 	#else
 	value = (*(__IO uint32_t*)IAP_APP_ADDRESS);
-	if (((*(__IO uint32_t*)IAP_APP_ADDRESS) == 0xffffffff ) )
+	if ( value == 0xffffffff )
 		return 0;
 	else
 		return 1;
